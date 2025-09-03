@@ -1,0 +1,375 @@
+{
+    box-sizing: border-box;
+}
+html, body {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    color: #111;
+    background: #fff;
+}
+
+button {
+    cursor: pointer;
+}
+
+/* Topbar */
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 52px;
+    padding: 0 12px;
+    background: #0f172a;
+    color: #e2e8f0;
+    border-bottom: 1px solid #0b1220;
+}
+
+.topbar .brand {
+    font-weight: 700;
+}
+
+.topbar .spacer {
+    flex: 1;
+}
+
+.topbar .modes button {
+    margin-left: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #1e293b;
+    color: #e2e8f0;
+}
+
+.topbar .modes button.active {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+
+/* Layout */
+.main {
+    display: grid;
+    grid-template-columns: 260px 1fr 300px;
+    grid-template-rows: calc(100vh - 52px);
+}
+
+.leftpanel {
+    grid-column: 1;
+    grid-row: 1;
+    overflow: auto;
+    padding: 12px;
+    border-right: 1px solid #e5e7eb;
+    background: #fafafa;
+}
+
+.rightpanel {
+    grid-column: 3;
+    grid-row: 1;
+    overflow: auto;
+    padding: 12px;
+    border-left: 1px solid #e5e7eb;
+    background: #fafafa;
+}
+
+.rightpanel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.rightpanel h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: #475569;
+    text-transform: uppercase;
+}
+
+#btn-clear-selection {
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #f1f5f9;
+}
+
+.detail-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.detail-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+.detail-card .card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.detail-card .title {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.detail-card .remove-btn {
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+    color: #ef4444;
+    border-radius: 6px;
+    padding: 2px 6px;
+}
+
+.detail-card .rows {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 8px;
+    font-size: 12px;
+}
+
+.detail-card .key { color: #64748b; }
+.detail-card .val { color: #111827; word-break: break-all; }
+
+.leftpanel h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: #475569;
+    text-transform: uppercase;
+}
+
+.leftpanel label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 14px;
+}
+
+.leftpanel hr {
+    border: 0;
+    border-top: 1px solid #e5e7eb;
+    margin: 8px 0;
+}
+
+.view {
+    grid-column: 2;
+    grid-row: 1;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: none;
+}
+
+.view.visible {
+    display: block;
+}
+
+/* SVG soll immer den Container füllen */
+.view svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: #fff;
+}
+
+/* Kanten / Elemente */
+.edges path.edge {
+    fill: none;
+    stroke: #111827;
+    stroke-width: 1.5;
+}
+
+.edges path.edge.is-selected {
+    stroke: #ef4444;
+    stroke-width: 2.5;
+}
+
+/* New non-breaking highlight/focus aliases */
+.is-highlighted {
+    stroke: #ffd166 !important;
+    stroke-width: 3 !important;
+}
+
+.clusterfx .cluster-ring.is-focused {
+    stroke: #94a3b8;
+    stroke-dasharray: 4 3;
+}
+
+.labels text.label {
+    font: 10px/1 sans-serif;
+    fill: #334155;
+    user-select: none;
+}
+
+/* Overlays */
+.overlays .speed line.speed {
+    stroke: #22c55e;
+    stroke-width: 1.5;
+    opacity: .9;
+}
+
+.overlays .tds line.tds {
+    stroke: #a855f7;
+    stroke-width: 1.5;
+    opacity: .7;
+    stroke-dasharray: 4 3;
+}
+
+/* Tooltip (bereit; noch nicht aktiv genutzt) */
+.tooltip {
+    position: fixed;
+    z-index: 20;
+    padding: 6px 8px;
+    background: #111;
+    color: #fff;
+    border-radius: 6px;
+    font-size: 12px;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
+}
+
+/* Marker-Farben (du kannst das später in UI-Theme auslagern) */
+.elems .balise {
+    fill: #ffd166;
+    stroke: #7a5d1a;
+}
+
+.elems .signal {
+    fill: #ef476f;
+    stroke: #782034;
+}
+
+.elems .tdscomp {
+    fill: #06d6a0;
+    stroke: #0d4f3f;
+}
+
+.segments .seg-line {
+    stroke: #444;
+    stroke-width: 1.5px;
+}
+
+.segments .seg-arc {
+    stroke: #1a73e8;
+    stroke-width: 1.5px;
+    fill: none;
+}
+
+.overlays .speed {
+    stroke: #8ecae6;
+    stroke-width: 3;
+}
+
+.overlays .tds {
+    stroke: #ffadad;
+    stroke-width: 5;
+    stroke-opacity: .35;
+}
+
+svg {
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+}
+
+.viewport {
+    vector-effect: non-scaling-stroke;
+}
+
+.edges path {
+    stroke: #8e8e8e;
+    stroke-width: 1.5;
+    fill: none;
+}
+
+.nodes circle {
+    fill: rgb(98, 170, 247);
+    r: 3px;
+}
+
+.label {
+    fill: #62aaf7;
+    font-size: 11px;
+    user-select: none;
+    pointer-events: none;
+}
+
+.is-selected {
+    stroke: #ffd166 !important;
+    stroke-width: 3 !important;
+}
+
+/* Startup overlay */
+.startup-overlay {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: 52px; /* leave space for the visible topbar */
+    bottom: 0;
+    z-index: 9999;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.startup-overlay .panel {
+    width: min(520px, 92vw);
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: 0 10px 30px rgba(2,6,23,0.12);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.startup-overlay h1 {
+    margin: 0 0 6px 0;
+    font-size: 18px;
+    color: #0f172a;
+}
+.startup-overlay p {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    color: #334155;
+}
+.startup-overlay label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 14px;
+}
+.startup-overlay input,
+.startup-overlay select {
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    font-size: 14px;
+}
+#btn-start-load {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #1e293b;
+    color: #e2e8f0;
+}
+.start-status {
+    min-height: 18px;
+    font-size: 12px;
+    color: #64748b;
+}
+.start-status.error { color: #ef4444; }

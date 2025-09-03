@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8"/>
+    <title>Graph Visualizer v3 – Skeleton</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link href="./css/styles.css" rel="stylesheet"/>
+</head>
+<body>
+<div id="start-overlay" class="startup-overlay">
+  <div class="panel">
+    <h1>Graph Visualizer – Start</h1>
+    <p>Bitte geben Sie die ISDP Base Adresse ein und wählen Sie die Version. Wenn das Feld leer bleibt, wird die Default‑Adresse verwendet: http://localhost:32308</p>
+    <label>ISDP Base Adresse
+      <input id="start-base-url" type="text" placeholder="z. B. http://localhost:32308" />
+    </label>
+    <label>ISDP Version
+      <select id="sel-isdp-version">
+        <option value="3.0.17">3.0.17</option>
+      </select>
+    </label>
+    <button id="btn-start-load" type="button">Laden</button>
+    <div id="start-status" class="start-status" aria-live="polite"></div>
+  </div>
+</div>
+<header class="topbar">
+    <div class="brand">Graph Visualizer V2</div>
+    <div class="spacer"></div>
+    <nav class="modes">
+        <button id="btn-located" class="active">Geographisch</button>
+        <button id="btn-dynamic">Topologisch</button>
+    </nav>
+</header>
+
+<main class="main" style="display:none;">
+    <aside class="leftpanel">
+        <h3>Element Visibility</h3>
+        <label><input id="chk-balises" type="checkbox" checked> Balises</label>
+        <label><input id="chk-signals" type="checkbox" checked> Signals</label>
+        <label><input id="chk-tdscomp" type="checkbox" checked> TDS Components</label>
+        <hr>
+        <label><input id="chk-speed" type="checkbox" checked> Speed</label>
+        <label><input id="chk-tdssec" type="checkbox" checked> TDS Sections</label>
+        <hr>
+        <!-- Geometrie-Ansicht -->
+        <h3>Geometry Visibility</h3>
+        <label><input id="chk-nodes" type="checkbox" checked> Nodes</label>
+        <label><input id="chk-edges" type="checkbox" checked> Kanten (Polyline)</label>
+        <label><input id="chk-segs" type="checkbox"> Segmente (Lines/Arcs)</label>
+        <label style="padding-left: 18px;"><input id="chk-arcsOnly" type="checkbox"> Nur Arcs</label>
+        <label><input id="chk-seg-arrows" type="checkbox" checked> Pfeile auf Segmenten</label>
+        <hr>
+        <h3>Names & IDs</h3>
+        <label><input id="chk-names" type="checkbox" checked> Names</label>
+        <label><input id="chk-ids" type="checkbox"> IDs</label>
+        <hr>
+        <label><input id="chk-hide-selected" type="checkbox"> Hide Selected Elements</label>
+        <hr>
+        <h3>Graph Controls</h3>
+        <button id="btn-center-graph" type="button">Center Graph</button>
+        <div style="margin-top:8px;">                
+        <label><input id="chk-flip-x" type="checkbox"> Flip X-Axis</label>
+        <label><input id="chk-flip-y" type="checkbox"> Flip Y-Axis</label>
+        </div>
+        <hr>
+        <h3>Search Elements</h3>
+        <div style="display:flex; gap:6px; align-items:center;">
+            <input id="txt-search" type="text" placeholder="ID oder Name" style="flex:1; padding:4px 6px;" />
+            <button id="btn-search" type="button">Suchen</button>
+        </div>
+        <div id="search-status" style="min-height:18px; font-size:12px; color:#6b7280; margin-top:4px;"></div>
+    </aside>
+
+    <section id="located-view" class="view visible" aria-label="Geographische Ansicht"></section>
+    <section id="dynamic-view" class="view" aria-label="Topologische Ansicht"></section>
+
+    <aside class="rightpanel">
+        <div class="rightpanel-header">
+            <h3>Selected Elements</h3>
+            <button id="btn-clear-selection" title="Alle entfernen">Leeren</button>
+        </div>
+        <div id="detail-list" class="detail-list" aria-live="polite"></div>
+    </aside>
+
+    <!-- Tooltip -->
+    <div id="tooltip" class="tooltip" hidden></div>
+
+</main>
+
+<!-- Bootstrap: ESM-Hauptmodul -->
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
