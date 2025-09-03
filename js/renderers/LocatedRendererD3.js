@@ -122,6 +122,15 @@ export default class LocatedRendererD3 {
             return Array.isArray(arr) ? arr.map(transform) : arr;
         }
 
+        // Auswahl-/Highlight-Helfer
+        const selSet = new Set(state.selection || []);
+        const selKey = selectionKeyForDatum;
+        const applySelHighlight = (selection) =>
+            selection
+                .classed('is-selected', d => selSet.has(selKey(d)))
+                .classed('is-highlighted', d => isHighlighted(d, selSet));
+        const maintainHL = function() { applySelHighlight(d3.select(this)); };
+
         // --- Edges ---
         const edges = Array.isArray(view.geo_edges) ? view.geo_edges.map(e => ({...e, polyline: transformPolyline(e.polyline)})) : [];
         const cleanPolyline = (d) => (d.polyline || []).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
@@ -130,22 +139,20 @@ export default class LocatedRendererD3 {
     // (bereits oben deklariert und transformiert)
 
 
-        const eSel = this.gEdges.selectAll('path.edge').data(edges, (d) => d.edgeId || d.id);
+        const eSel = this.gEdges.selectAll('path.edge').data(edges, d => d.edgeId || d.id);
         eSel.exit().remove();
         const eMerged = eSel.enter().append('path').attr('class', 'edge')
             .merge(eSel)
-            .attr('d', (d) => this.lineGen(cleanPolyline(d)))
+            .attr('d', d => this.lineGen(cleanPolyline(d)))
             .attr('pointer-events', 'stroke')
-            .classed('is-selected', (d) => !!state.selection && state.selection.includes(d.edgeId || d.id))
-            .classed('is-highlighted', (d) => isHighlighted(d, state.selection))
             .on('click', (ev, d) => this.onSelect([d.edgeId || d.id]));
+        applySelHighlight(eMerged);
         // keep highlighted edges visible during animations/overlaps
-        eMerged.filter(d => isHighlighted(d, state.selection)).raise();
+        eMerged.filter(d => isHighlighted(d, selSet)).raise();
 
         const f = (state && state.filters) ? state.filters : {};
         const showEdges = (f.showEdges !== false); // default = an
         const hideSelected = !!f.hideSelectedElements;
-        const selSet = new Set(state.selection || []);
         this.gEdges.style("display", showEdges ? null : "none");
         this.gEdges.selectAll('path.edge')
             .style('display', d => (showEdges && !(hideSelected && selSet.has(d.edgeId || d.id))) ? null : 'none');
@@ -217,16 +224,15 @@ export default class LocatedRendererD3 {
 
         // --- Nodes (optional) ---
         const nodes = Array.isArray(view.nodes) ? view.nodes.map(transform) : [];
-        const nSel = this.gElems.selectAll('circle.node').data(nodes, (d) => d.id);
+        const nSel = this.gElems.selectAll('circle.node').data(nodes, d => d.id);
         nSel.exit().remove();
         const nMerged = nSel.enter().append('circle').attr('class', 'node').attr('r', 2.5)
             .merge(nSel)
-            .attr('cx', (d) => d.x)
-            .attr('cy', (d) => d.y)
-            .classed('is-selected', (d) => selSet.has(d.id))
-            .classed('is-highlighted', (d) => isHighlighted(d, state.selection))
+            .attr('cx', d => d.x)
+            .attr('cy', d => d.y)
             .on('click', (ev, d) => this.onSelect([d.id]));
-        nMerged.filter(d => isHighlighted(d, state.selection)).raise();
+        applySelHighlight(nMerged);
+        nMerged.filter(d => isHighlighted(d, selSet)).raise();
 
         // Labels: Nodes & Elemente gesteuert über Names/IDs
         const showNames = (f.showNames !== false);
@@ -407,24 +413,15 @@ export default class LocatedRendererD3 {
         const balEnter = balSel.enter().append('circle').attr('class', 'balise').attr('r', 3)
             .on('click', (ev, d) => onElemClick(d, ev));
         const balMerged = balEnter.merge(balSel)
-            .style('display', d => (showBal && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none')
-            .classed('is-selected', d => selSet.has(selKey(d)))
-            .classed('is-highlighted', d => isHighlighted(d, state.selection));
-        balMerged.filter(d => selSet.has(selKey(d)) || isHighlighted(d, state.selection)).raise();
+            .style('display', d => (showBal && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
+        applySelHighlight(balMerged);
+        balMerged.filter(d => isHighlighted(d, selSet)).raise();
         balMerged.transition().duration(250)
             .attr('cx', d => (posByKey.get(d.key)?.x ?? d.baseX))
             .attr('cy', d => (posByKey.get(d.key)?.y ?? d.baseY))
-            // Re-assert highlight/selection on both interrupt and end
-            .on('interrupt', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            })
-            .on('end', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            });
+            .on('start', maintainHL)
+            .on('interrupt', maintainHL)
+            .on('end', maintainHL);
 
         // --- Signale ---
         const sigSel = this.gElems.selectAll('rect.signal').data(sigBase, d => d.id || d.key);
@@ -432,23 +429,15 @@ export default class LocatedRendererD3 {
         const sigEnter = sigSel.enter().append('rect').attr('class', 'signal').attr('width', 6).attr('height', 6).attr('rx', 1)
             .on('click', (ev, d) => onElemClick(d, ev));
         const sigMerged = sigEnter.merge(sigSel)
-            .style('display', d => (showSig && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none')
-            .classed('is-selected', d => selSet.has(selKey(d)))
-            .classed('is-highlighted', d => isHighlighted(d, state.selection));
-        sigMerged.filter(d => selSet.has(selKey(d)) || isHighlighted(d, state.selection)).raise();
+            .style('display', d => (showSig && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
+        applySelHighlight(sigMerged);
+        sigMerged.filter(d => isHighlighted(d, selSet)).raise();
         sigMerged.transition().duration(250)
             .attr('x', d => ((posByKey.get(d.key)?.x ?? d.baseX) - 3))
             .attr('y', d => ((posByKey.get(d.key)?.y ?? d.baseY) - 3))
-            .on('interrupt', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            })
-            .on('end', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            });
+            .on('start', maintainHL)
+            .on('interrupt', maintainHL)
+            .on('end', maintainHL);
 
         // --- TDS Komponenten ---
         const tdcSel = this.gElems.selectAll('path.tdscomp').data(tdcBase, d => d.id || d.key);
@@ -456,25 +445,17 @@ export default class LocatedRendererD3 {
         const tdcEnter = tdcSel.enter().append('path').attr('class', 'tdscomp').attr('d', 'M0,-5 L5,0 L0,5 L-5,0 Z')
             .on('click', (ev, d) => onElemClick(d, ev));
         const tdcMerged = tdcEnter.merge(tdcSel)
-            .style('display', d => (showTds && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none')
-            .classed('is-selected', d => selSet.has(selKey(d)))
-            .classed('is-highlighted', d => isHighlighted(d, state.selection));
-        tdcMerged.filter(d => selSet.has(selKey(d)) || isHighlighted(d, state.selection)).raise();
+            .style('display', d => (showTds && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
+        applySelHighlight(tdcMerged);
+        tdcMerged.filter(d => isHighlighted(d, selSet)).raise();
         tdcMerged.transition().duration(250)
             .attr('transform', d => {
                 const p = posByKey.get(d.key) || {x: d.baseX, y: d.baseY};
                 return `translate(${p.x},${p.y})`;
             })
-            .on('interrupt', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            })
-            .on('end', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            });
+            .on('start', maintainHL)
+            .on('interrupt', maintainHL)
+            .on('end', maintainHL);
 
         // --- Overlays ---
         const speed = (view.overlays?.speed || []).filter((s) => s && s.startXY && s.endXY).map(s => ({
