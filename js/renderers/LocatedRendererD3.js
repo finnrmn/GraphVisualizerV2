@@ -129,7 +129,10 @@ export default class LocatedRendererD3 {
             selection
                 .classed('is-selected', d => selSet.has(selKey(d)))
                 .classed('is-highlighted', d => isHighlighted(d, selSet));
-        const maintainHL = function() { applySelHighlight(d3.select(this)); };
+
+        // reapply all highlights after transitions or FX updates
+        let reapplyHighlights = () => {};
+        const maintainHL = () => reapplyHighlights();
 
         // --- Edges ---
         const edges = Array.isArray(view.geo_edges) ? view.geo_edges.map(e => ({...e, polyline: transformPolyline(e.polyline)})) : [];
@@ -374,8 +377,10 @@ export default class LocatedRendererD3 {
         // Hilfsfunktion: Klick-Logik für Elemente in Clustern
         const onElemClick = (d, ev) => {
             const ck = roundKey(d.baseX, d.baseY);
+            const cl = clusters.get(ck);
+            const n = cl ? cl.items.length : 1;
             const isExpanded = this._clusterState.get(ck) === true;
-            if (!isExpanded) {
+            if (n > 1 && !isExpanded) {
                 // 1) War kollabiert -> nur expandieren, KEINE Selektion
                 this._clusterState.set(ck, true);
                 // Neu zeichnen, damit die Elemente auseinandergehen
@@ -384,7 +389,7 @@ export default class LocatedRendererD3 {
                 if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
                 return;
             }
-            // 2) War expandiert -> dieses Element selektieren und danach wieder kollabieren
+            // 2) Entweder war expandiert oder nur ein Element vorhanden -> selektieren und kollabieren
             this._clusterState.set(ck, false);
             const selId = d.id || d.key || d.edgeId;
             this.onSelect([selId]);
@@ -405,7 +410,10 @@ export default class LocatedRendererD3 {
             .merge(ringSel)
             .classed('is-focused', true)
             .transition().duration(250)
-            .attr('cx', d => d.cx).attr('cy', d => d.cy).attr('r', d => d.r);
+            .attr('cx', d => d.cx).attr('cy', d => d.cy).attr('r', d => d.r)
+            .on('start', maintainHL)
+            .on('interrupt', maintainHL)
+            .on('end', maintainHL);
 
         // --- Balisen (finale Positionen, animiert)
         const balSel = this.gElems.selectAll('circle.balise').data(balBase, d => d.id || d.key);
@@ -456,6 +464,16 @@ export default class LocatedRendererD3 {
             .on('start', maintainHL)
             .on('interrupt', maintainHL)
             .on('end', maintainHL);
+
+        // ensure highlights persist through any FX transitions
+        reapplyHighlights = () => {
+            applySelHighlight(eMerged);
+            applySelHighlight(nMerged);
+            applySelHighlight(balMerged);
+            applySelHighlight(sigMerged);
+            applySelHighlight(tdcMerged);
+        };
+        reapplyHighlights();
 
         // --- Overlays ---
         const speed = (view.overlays?.speed || []).filter((s) => s && s.startXY && s.endXY).map(s => ({
