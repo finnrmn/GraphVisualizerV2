@@ -430,7 +430,6 @@ export default class LocatedRendererD3 {
             .merge(lElems)
             .text(d => showAnyLabel ? composeLabel(d) : '')
             .style('display', d => (showAnyLabel && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none')
-            .transition().duration(250)
             .attr('x', d => d.x)
             .attr('y', d => d.y);
 
@@ -472,7 +471,7 @@ export default class LocatedRendererD3 {
         this.gNodes.style("display", showNodes ? null : "none");
 
 
-        // --- Balisen (finale Positionen, animiert)
+        // --- Balisen (finale Positionen, ohne Animation)
         const balSel = this.gBaliseElems.selectAll('circle.balise').data(balBase, d => d.id || d.key);
         balSel.exit().remove();
         const balEnter = balSel.enter().append('circle').attr('class', 'balise').attr('r', 3).attr('rx', 1);
@@ -482,12 +481,9 @@ export default class LocatedRendererD3 {
 
         applySelHighlight(balMerged);
         balMerged.filter(d => isHighlighted(d, selSet)).raise();
-        balMerged.transition().duration(250)
+        balMerged
             .attr('cx', d => d.baseX)
-            .attr('cy', d => d.baseY)
-            .on('start', maintainHL)
-            .on('interrupt', maintainHL)
-            .on('end', maintainHL);
+            .attr('cy', d => d.baseY);
 
 
         // --- Signale ---
@@ -500,12 +496,9 @@ export default class LocatedRendererD3 {
 
         applySelHighlight(sigMerged);
         sigMerged.filter(d => isHighlighted(d, selSet)).raise();
-        sigMerged.transition().duration(250)
+        sigMerged
             .attr('x', d => (d.baseX - 3))
-            .attr('y', d => (d.baseY - 3))
-            .on('start', maintainHL)
-            .on('interrupt', maintainHL)
-            .on('end', maintainHL);
+            .attr('y', d => (d.baseY - 3));
 
         // --- TDS Komponenten ---
         const tdcSel = this.gTdsElems.selectAll('path.tdscomp').data(tdcBase, d => d.id || d.key);
@@ -516,13 +509,10 @@ export default class LocatedRendererD3 {
             .style('display', d => (showTds && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
         applySelHighlight(tdcMerged);
         tdcMerged.filter(d => isHighlighted(d, selSet)).raise();
-        tdcMerged.transition().duration(250)
-            .attr('transform', d => `translate(${d.baseX},${d.baseY})`)
-            .on('start', maintainHL)
-            .on('interrupt', maintainHL)
-            .on('end', maintainHL);
+        tdcMerged
+            .attr('transform', d => `translate(${d.baseX},${d.baseY})`);
 
-        // ensure highlights persist through any FX transitions
+        // ensure highlights persist
         reapplyHighlights = () => {
             applySelHighlight(eMerged);
             applySelHighlight(nMerged);
