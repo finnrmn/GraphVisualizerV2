@@ -404,8 +404,8 @@ svg {
 }
 
 .overlap-menu {
-    min-width: 260px;
-    max-width: 360px;
+    min-width: 360px;
+    max-width: 560px;
     max-height: 280px;
     overflow: auto;
     background: #ffffff;
@@ -432,8 +432,8 @@ svg {
 
 .overlap-item {
     display: grid;
-    grid-template-columns: auto auto 1fr auto; /* NEU: 4 Spalten */
-    align-items: center;
+    grid-template-columns: auto auto 1fr auto; /* Icon | Kind | Label | ID */
+    align-items: start; /* Label darf mehrzeilig werden */
     gap: 8px;
     width: 100%;
     padding: 6px 8px;
@@ -450,6 +450,8 @@ svg {
 }
 
 .overlap-menu .ico { width:14px; height:14px; display:block; }
+.overlap-menu .ico { background: transparent !important; }
+.overlap-overlay svg { background: transparent !important; }
 .overlap-menu .ico .balise,
 .overlap-menu .ico .signal,
 .overlap-menu .ico .tdscomp,
@@ -472,9 +474,9 @@ svg {
 
 .overlap-item .label {
     color: #111827;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal; /* immer sichtbar, darf umbrechen */
+    overflow: visible;
+    text-overflow: clip;
 }
 
 .overlap-item .meta {
