@@ -4,12 +4,7 @@
 // Bootstrapping für beide Renderer + Controller (M2‑Fixpack)
 
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm";
-// Debug-Tools optional laden (falls nicht vorhanden, ignorieren)
-let QA = null;
-try {
-    QA = await import("./tests/debugGeometry.js");
-} catch {
-}
+
 
 import ISDPDataFetcher from "./ISDPDataFetcher.js";
 import GraphDataStore from "./GraphDataStore.js";
@@ -84,11 +79,6 @@ async function doLoad() {
             if (elMain) elMain.style.display = '';
             // Initial: Graph sichtbar machen (einmalig zentrieren)
             controller.centerGraph();
-            // Debug (optional)
-            if (QA && false) {
-                window.__qa = QA;
-                try { QA.scanAllEdges?.(store, {limit: 50}); } catch {}
-            }
             window.__graph = {controller, store, projector, d3};
             if (elStatus) elStatus.textContent = '';
         } else {

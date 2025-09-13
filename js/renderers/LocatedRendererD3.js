@@ -10,24 +10,54 @@ export default class LocatedRendererD3 {
         this.svg = d3.select(this.mount).append('svg').attr('role', 'img').attr('width', '100%').attr('height', '100%');
         this.root = this.svg.append('g').attr('class', 'viewport');
 
-        // Layer
-        this.gEdges = this.root.append('g').attr('class', 'edges');
-        this.gOver = this.root.append('g').attr('class', 'overlays');
+        // HTML-Overlay für Overlap-Popup (liegt über dem SVG)
+        this.mount.style.position = (getComputedStyle(this.mount).position === 'static') ? 'relative' : getComputedStyle(this.mount).position;
+        this._overlayRoot = d3.select(this.mount)
+            .append('div')
+            .attr('class', 'overlap-overlay')
+            .style('position', 'absolute')
+            .style('inset', '0')
+            .style('pointer-events', 'none'); // nur das Popup selbst fängt Pointer-Events
 
-        this.gElems = this.root.append('g').attr('class', 'elems');
-        this.gLabels = this.root.append('g').attr('class', 'labels');
-        this.gSegments = this.root.append("g").attr("class", "segments");
-        this.gSegLines = this.gSegments.append("g").attr("class", "seg-lines");
-        this.gSegArcs = this.gSegments.append("g").attr("class", "seg-arcs");
-        // Sub-Layer
+        // Hilfs-Cleaner (verhindert Leichen bei Re-Render)
+        this.closeOverlapMenu = () => {
+            if (this._menuEl) {
+                this._menuEl.remove();
+                this._menuEl = null;
+            }
+            if (this._outsideClickHandler) {
+                document.removeEventListener('mousedown', this._outsideClickHandler, true);
+                document.removeEventListener('keydown', this._outsideKeyHandler, true);
+                this._outsideClickHandler = null;
+                this._outsideKeyHandler = null;
+            }
+        };
+
+
+        // --- LAYER STACK (unten → oben) ----
+        this.gEdges = this.root.append('g').attr('class', 'edges');               // 1: unten
+        this.gNodes = this.root.append('g').attr('class', 'nodes');               // 2: nodes direkt über edges
+
+        // Segmente (optional über edges/nodes, aber unter Elementen)
+        this.gSegments = this.root.append('g').attr('class', 'segments');
+        this.gSegLines = this.gSegments.append('g').attr('class', 'seg-lines');
+        this.gSegArcs = this.gSegments.append('g').attr('class', 'seg-arcs');
+
+        // Overlays (unter Elementen)
+        this.gOver = this.root.append('g').attr('class', 'overlays');
         this.gSpeed = this.gOver.append('g').attr('class', 'speed');
         this.gTdsSec = this.gOver.append('g').attr('class', 'tds');
 
-        // Marker (Platzhalter)
+        // Elemente in definierter Reihenfolge: TDS → Signals → Balises
+        this.gTdsElems = this.root.append('g').attr('class', 'elems tds');         // 3
+        this.gSignalElems = this.root.append('g').attr('class', 'elems signals');  // 4
+        this.gBaliseElems = this.root.append('g').attr('class', 'elems balises');  // 5
+
+        // Labels (ganz oben)
+        this.gLabels = this.root.append('g').attr('class', 'labels');              // 6
+
+
         const defs = this.svg.append('defs');
-        defs.append('symbol').attr('id', 'sym-balise').append('path').attr('d', 'M0,-6 L6,6 L-6,6 Z');
-        defs.append('symbol').attr('id', 'sym-signal').append('rect').attr('x', '-5').attr('y', '-5').attr('width', '10').attr('height', '10').attr('rx', '2');
-        defs.append('symbol').attr('id', 'sym-tds').append('path').attr('d', 'M0,-7 L7,0 L0,7 L-7,0 Z');
         defs.append("marker")
             .attr("id", "mk-arrow")
             .attr("viewBox", "0 0 10 10")
@@ -39,7 +69,6 @@ export default class LocatedRendererD3 {
             .append("path")
             .attr("d", "M 0 0 L 10 5 L 0 10 z");
 
-
         this.zoom = d3.zoom().scaleExtent([0.1, 16]).on('zoom', (ev) => this.root.attr('transform', ev.transform));
         this.svg.call(this.zoom);
 
@@ -47,6 +76,8 @@ export default class LocatedRendererD3 {
 
         this.svg.attr('viewBox', '0 0 1000 600').attr('preserveAspectRatio', 'xMidYMid meet');
         this._didFit = false;
+
+
     }
 
     _fitToBBox(b) {
@@ -60,6 +91,8 @@ export default class LocatedRendererD3 {
     update(view, state = {}) {
         console.log("LocatedRendererD3.update", view, state);
         if (!view) return;
+        // Bei jedem Update: evtl. offenes Popup schließen
+        this.closeOverlapMenu?.();
 
         // Flip/Center Optionen auslesen
         const opts = state.projectorOptions || {};
@@ -132,39 +165,31 @@ export default class LocatedRendererD3 {
         let reapplyHighlights = () => {};
         const maintainHL = () => reapplyHighlights();
 
-        // --- Edges ---
-        const edges = Array.isArray(view.geo_edges) ? view.geo_edges.map(e => ({
-            ...e,
-            polyline: transformPolyline(e.polyline)
-        })) : [];
-        const cleanPolyline = (d) => (d.polyline || []).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
-
-        // --- Edges ---
-        // (bereits oben deklariert und transformiert)
 
 
-        const eSel = this.gEdges.selectAll('path.edge').data(edges, d => d.edgeId || d.id);
-        eSel.exit().remove();
-        const eMerged = eSel.enter().append('path').attr('class', 'edge')
-            .merge(eSel)
-            .attr('d', d => this.lineGen(cleanPolyline(d)))
-            .attr('pointer-events', 'stroke')
-            .on('click', (ev, d) => this.onSelect([d.edgeId || d.id]));
-        applySelHighlight(eMerged);
-        // keep highlighted edges visible during animations/overlaps
-        eMerged.filter(d => isHighlighted(d, selSet)).raise();
-
+        // --- Filter-Flags robust ermitteln (Default = an) ---
         const f = (state && state.filters) ? state.filters : {};
-        const showEdges = (f.showEdges !== false); // default = an
-        const hideSelected = !!f.hideSelectedElements;
-        this.gEdges.style("display", showEdges ? null : "none");
-        this.gEdges.selectAll('path.edge')
-            .style('display', d => (showEdges && !(hideSelected && selSet.has(d.edgeId || d.id))) ? null : 'none');
+        const pickBool = (obj, ...keys) => {
+            for (const k of keys) if (Object.prototype.hasOwnProperty.call(obj, k)) return !!obj[k];
+            return true; // default ON, wenn Flag fehlt
+        };
 
-        // --- Segmente ---
+        const hideSelected = !!f.hideSelectedElements;
+        const showEdges = pickBool(f, 'showEdges');
         const showSegments = !!f.showSegments;
         const arcsOnly = !!f.arcsOnly;
         const arrowOnSegments = (f.arrowOnSegments !== false);
+
+        const showNodes = pickBool(f, 'showNodes');
+        const showBal = pickBool(f, 'showBalises');
+        const showSig = pickBool(f, 'showSignals');
+        const showTds = pickBool(f, 'showTdsComponents');
+
+        // Labels: Nodes & Elemente gesteuert über Names/IDs
+        const showNames = pickBool(f, "showNames");
+        const showIds = pickBool(f, "showIds")
+        const showAnyLabel = showNames || showIds;
+
 
         // Click priority: when edges are visible, disable segment clicks; when edges off and segments on, enable segment clicks
         this.gEdges.style("pointer-events", showEdges ? "auto" : "none");
@@ -193,6 +218,28 @@ export default class LocatedRendererD3 {
             : [];
 
         this.gSegments.style("display", showSegments ? null : "none");
+
+
+
+        // --- Edges ---
+        const edges = Array.isArray(view.geo_edges) ? view.geo_edges.map(e => ({
+            ...e,
+            polyline: transformPolyline(e.polyline)
+        })) : [];
+        const cleanPolyline = (d) => (d.polyline || []).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+
+        // --- Edges ---
+        const eSel = this.gEdges.selectAll('path.edge').data(edges, d => d.edgeId || d.id);
+        eSel.exit().remove();
+        const eMerged = eSel.enter().append('path').attr('class', 'edge')
+            .merge(eSel)
+            .attr('d', d => this.lineGen(cleanPolyline(d)))
+            .attr('pointer-events', 'stroke')
+            .on('click', (ev, d) => this.onSelect([d.edgeId || d.id]))
+            .style('display', d => (showEdges && !(hideSelected && selSet.has(d.edgeId))) ? null: 'none');
+        applySelHighlight(eMerged);
+        eMerged.filter(d => isHighlighted(d, selSet)).raise();
+
 
         // Lines
         const lineSel = this.gSegLines.selectAll("line.seg-line")
@@ -226,22 +273,25 @@ export default class LocatedRendererD3 {
             .on('click', (ev, d) => this.onSelect([d.id]))
             .style('display', d => (showSegments && !(hideSelected && selSet.has(d.id))) ? null : 'none');
 
-        // --- Nodes (optional) ---
-        const nodes = Array.isArray(view.nodes) ? view.nodes.map(transform) : [];
-        const nSel = this.gElems.selectAll('circle.node').data(nodes, d => d.id);
+        // --- Nodes (transformiert) ---
+        const nodesRaw = Array.isArray(view.nodes) ? view.nodes.map(transform) : [];
+        // Items mit Basis-Koordinate, damit Overlap-Index einheitlich funktioniert
+        const nodeBase = showNodes ? nodesRaw.map(d => ({
+            ...d, baseX: d.x, baseY: d.y, kind: 'node', key: d.id
+        })) : [];
+
+        // Render
+        const nSel = this.gNodes.selectAll('circle.node').data(nodeBase, d => d.id);
         nSel.exit().remove();
         const nMerged = nSel.enter().append('circle').attr('class', 'node').attr('r', 2.5)
             .merge(nSel)
-            .attr('cx', d => d.x)
-            .attr('cy', d => d.y)
-            .on('click', (ev, d) => this.onSelect([d.id]));
+            .attr('cx', d => d.baseX)
+            .attr('cy', d => d.baseY)
+            .on('click', (ev, d) => onElemClick(d, ev));
         applySelHighlight(nMerged);
         nMerged.filter(d => isHighlighted(d, selSet)).raise();
-
-        // Labels: Nodes & Elemente gesteuert über Names/IDs
-        const showNames = (f.showNames !== false);
-        const showIds = !!f.showIds;
-        const showAnyLabel = showNames || showIds;
+        this.gNodes.selectAll('circle.node')
+            .style('display', d => (showNodes && !(hideSelected && selSet.has(d.id))) ? null : 'none');
 
         const composeLabel = (d) => {
             const nm = (showNames ? (d.name ?? d.label ?? null) : null);
@@ -251,21 +301,16 @@ export default class LocatedRendererD3 {
             if (id) return `${id}`;
             return '';
         };
-
-        // Node-Labels
-        const lNodes = this.gLabels.selectAll('text.node-label').data(nodes, d => d.id);
+        const lNodes = this.gLabels.selectAll('text.node-label').data(nodeBase, d => d.id);
         lNodes.exit().remove();
         lNodes.enter().append('text').attr('class', 'label node-label').attr('dy', -6)
             .merge(lNodes)
-            .attr('x', d => d.x)
-            .attr('y', d => d.y)
+            .attr('x', d => d.baseX)
+            .attr('y', d => d.baseY)
             .text(d => showAnyLabel ? composeLabel(d) : '')
-            .style('display', d => (showAnyLabel && (f.showNodes !== false) && !(hideSelected && selSet.has(d.id))) ? null : 'none');
+            .style('pointer-events', 'none')
+            .style('display', d => (showAnyLabel && showNodes && !(hideSelected && selSet.has(d.id))) ? null : 'none');
 
-        // Sichtbarkeit von Knoten (Kreise) unabhängig von Labels
-        const showNodes = (f.showNodes !== false);
-        this.gElems.selectAll('circle.node')
-            .style('display', d => (showNodes && !(hideSelected && selSet.has(d.id))) ? null : 'none');
 
         // --- Edge Labels (Names & IDs) ---
         const topEdges = Array.isArray(view.top_edges) ? view.top_edges : [];
@@ -284,6 +329,7 @@ export default class LocatedRendererD3 {
             .attr('x', d => d.x)
             .attr('y', d => d.y)
             .text(d => showAnyLabel ? composeLabel(d) : '')
+            .style('pointer-events', 'none')
             .style('display', d => (showAnyLabel && showEdges && !(hideSelected && selSet.has(d.id))) ? null : 'none');
 
         // --- Segment Labels (Names & IDs) ---
@@ -307,14 +353,11 @@ export default class LocatedRendererD3 {
             .attr('x', d => d.x)
             .attr('y', d => d.y)
             .text(d => showAnyLabel ? composeLabel(d) : '')
+            .style('pointer-events', 'none')
             .style('display', d => (showAnyLabel && showSegments && !(hideSelected && selSet.has(d.id))) ? null : 'none');
 
         // --- Elemente (Balisen / Signale / TDS-Komponenten) ---
         const elems = view.elements || {};
-        const showBal = (f.showBalises !== false);
-        const showSig = (f.showSignals !== false);
-        const showTds = (f.showTdsComponents !== false);
-
         // Transformierte Grunddaten mit Basis-Koordinate (ohne Offset) + stabiler Key
         const makeKey = (d, fallback) => (d.id) ? d.id : (fallback);
         const balBase = showBal ? (elems.balises || []).map(d => {
@@ -332,6 +375,46 @@ export default class LocatedRendererD3 {
             const key = `${d.edgeId}:${d.ikAB ?? (p.x + ',' + p.y)}`;
             return {...d, baseX: p.x, baseY: p.y, key: makeKey(d, key)};
         }) : [];
+
+        // Bildschirm-Geometrie für Pixel-Key (SVG→CSS-Pixel)
+        const t = d3.zoomTransform(this.root.node());
+        const rect = this.svg.node().getBoundingClientRect();
+        const vb = (this.svg.attr('viewBox') || '0 0 1000 600').split(/\s+/).map(Number);
+        const scaleX = rect.width / vb[2];
+        const scaleY = rect.height / vb[3];
+
+        // Hilfsfunktion: auf Bildschirm-Pixel runden (mit Zoom/Pan & ViewBox-Skalierung)
+        const pxKey = (x, y) => {
+            const [ux, uy] = t.apply([x, y]);
+            return `${Math.round(ux * scaleX)}:${Math.round(uy * scaleY)}`;
+        };
+
+        // Overlap-Index aufbauen: Pixel-Key → Array von Elementen
+        this._overlapIndex = new Map();
+        const _pushOverlap = (d) => {
+            const k = pxKey(d.baseX, d.baseY);
+            const arr = this._overlapIndex.get(k) || [];
+            arr.push(d);
+            this._overlapIndex.set(k, arr);
+        };
+
+        // Elemente einspeisen (ggf. 'kind' setzen, falls nicht vorhanden)
+        (balBase || []).forEach(d => {
+            if (!d.kind) d.kind = 'balise';
+            _pushOverlap(d);
+        });
+        (sigBase || []).forEach(d => {
+            if (!d.kind) d.kind = 'signal';
+            _pushOverlap(d);
+        });
+        (tdcBase || []).forEach(d => {
+            if (!d.kind) d.kind = 'tds';
+            _pushOverlap(d);
+        });
+        (nodeBase || []).forEach(d => {
+            if (!d.kind) d.kind = "node";
+            _pushOverlap(d);
+        });
 
         // --- Labels der Elemente ---
         const elemLabelData = [];
@@ -351,21 +434,52 @@ export default class LocatedRendererD3 {
             .attr('x', d => d.x)
             .attr('y', d => d.y);
 
-        // Hilfsfunktion: Klick-Logik für Elemente in Clustern
+        // Hilfsfunktion: Klick -> bei Überlappung Popup, sonst direkte Selektion
         const onElemClick = (d, ev) => {
+            // Alle Elemente, die am gleichen Bildschirm-Pixel liegen
+            const key = pxKey(d.baseX, d.baseY);
+            const bucket = this._overlapIndex.get(key) || [d];
+
+            // Label-Komponist (verwende vorhandenes composeLabel, falls aktiv)
+            const labelOf = (obj) => {
+                try {
+                    if (showAnyLabel && typeof composeLabel === 'function') return composeLabel(obj);
+                } catch (_) {
+                }
+                return obj.name || obj.label || obj.id || obj.key || obj.edgeId || obj.kind || 'Element';
+            };
+
+            if (bucket.length > 1) {
+                // Position: neben Cursor (innerhalb des Mount-Containers)
+                const clientX = (ev && (ev.clientX !== undefined)) ? ev.clientX : 0;
+                const clientY = (ev && (ev.clientY !== undefined)) ? ev.clientY : 0;
+                this.openOverlapMenu({clientX, clientY}, bucket, labelOf);
+                ev?.stopPropagation?.();
+                ev?.preventDefault?.();
+                return;
+            }
+
+            // Fallback: direkt selektieren
             const selId = d.id || d.key || d.edgeId;
             this.onSelect([selId]);
-            if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+            ev?.stopPropagation?.();
         };
 
 
+        this.gBaliseElems.style("display", showBal ? null : "none");
+        this.gSignalElems.style("display", showSig ? null : "none");
+        this.gTdsElems.style("display", showTds ? null : "none");
+        this.gNodes.style("display", showNodes ? null : "none");
+
+
         // --- Balisen (finale Positionen, animiert)
-        const balSel = this.gElems.selectAll('circle.balise').data(balBase, d => d.id || d.key);
+        const balSel = this.gBaliseElems.selectAll('circle.balise').data(balBase, d => d.id || d.key);
         balSel.exit().remove();
-        const balEnter = balSel.enter().append('circle').attr('class', 'balise').attr('r', 3)
-            .on('click', (ev, d) => onElemClick(d, ev));
+        const balEnter = balSel.enter().append('circle').attr('class', 'balise').attr('r', 3).attr('rx', 1);
         const balMerged = balEnter.merge(balSel)
+            .on('click', (ev, d) => onElemClick(d, ev))
             .style('display', d => (showBal && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
+
         applySelHighlight(balMerged);
         balMerged.filter(d => isHighlighted(d, selSet)).raise();
         balMerged.transition().duration(250)
@@ -377,12 +491,13 @@ export default class LocatedRendererD3 {
 
 
         // --- Signale ---
-        const sigSel = this.gElems.selectAll('rect.signal').data(sigBase, d => d.id || d.key);
+        const sigSel = this.gSignalElems.selectAll('rect.signal').data(sigBase, d => d.id || d.key);
         sigSel.exit().remove();
-        const sigEnter = sigSel.enter().append('rect').attr('class', 'signal').attr('width', 6).attr('height', 6).attr('rx', 1)
-            .on('click', (ev, d) => onElemClick(d, ev));
+        const sigEnter = sigSel.enter().append('rect').attr('class', 'signal').attr('width', 6).attr('height', 6).attr('rx', 1);
         const sigMerged = sigEnter.merge(sigSel)
+            .on('click', (ev, d) => onElemClick(d, ev))
             .style('display', d => (showSig && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
+
         applySelHighlight(sigMerged);
         sigMerged.filter(d => isHighlighted(d, selSet)).raise();
         sigMerged.transition().duration(250)
@@ -393,11 +508,11 @@ export default class LocatedRendererD3 {
             .on('end', maintainHL);
 
         // --- TDS Komponenten ---
-        const tdcSel = this.gElems.selectAll('path.tdscomp').data(tdcBase, d => d.id || d.key);
+        const tdcSel = this.gTdsElems.selectAll('path.tdscomp').data(tdcBase, d => d.id || d.key);
         tdcSel.exit().remove();
-        const tdcEnter = tdcSel.enter().append('path').attr('class', 'tdscomp').attr('d', 'M0,-5 L5,0 L0,5 L-5,0 Z')
-            .on('click', (ev, d) => onElemClick(d, ev));
+        const tdcEnter = tdcSel.enter().append('path').attr('class', 'tdscomp').attr('d', 'M0,-5 L5,0 L0,5 L-5,0 Z');
         const tdcMerged = tdcEnter.merge(tdcSel)
+            .on('click', (ev, d) => onElemClick(d, ev))
             .style('display', d => (showTds && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
         applySelHighlight(tdcMerged);
         tdcMerged.filter(d => isHighlighted(d, selSet)).raise();
@@ -442,5 +557,110 @@ export default class LocatedRendererD3 {
             .attr('x1', (d) => d.startXY.x).attr('y1', (d) => d.startXY.y)
             .attr('x2', (d) => d.endXY.x).attr('y2', (d) => d.endXY.y);
     }
+
+    openOverlapMenu(pos, items, labelOf) {
+        this.closeOverlapMenu?.();
+
+        // Menü-Container
+        const rect = this.svg.node().getBoundingClientRect();
+        const mx = Math.max(8, Math.min(rect.width - 8, pos.clientX - rect.left + 8));
+        const my = Math.max(8, Math.min(rect.height - 8, pos.clientY - rect.top + 8));
+
+        const menu = document.createElement('div');
+        menu.className = 'overlap-menu';
+        menu.style.position = 'absolute';
+        menu.style.left = `${mx}px`;
+        menu.style.top = `${my}px`;
+        menu.style.pointerEvents = 'auto';
+        menu.setAttribute('role', 'listbox');
+        menu.tabIndex = 0;
+
+        // Inhalte
+        // kleine Escaper, damit Label/ID sicher sind
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => (
+            ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m]
+            )));
+
+        // Icon je Kind (inline SVG; 14x14, zentriert um 0/0)
+        const iconFor = (kind) => {
+            switch ((kind || '').toLowerCase()) {
+                case 'balise':
+                    return '<svg class="ico" viewBox="-7 -7 14 14" aria-hidden="true"><path class="balise" d="M0,-6 L6,6 L-6,6 Z"/></svg>';
+                case 'signal':
+                    return '<svg class="ico" viewBox="-7 -7 14 14" aria-hidden="true"><rect class="signal" x="-5" y="-5" width="10" height="10" rx="2"/></svg>';
+                case 'tds':
+                    return '<svg class="ico" viewBox="-8 -8 16 16" aria-hidden="true"><path class="tdscomp" d="M0,-7 L7,0 L0,7 L-7,0 Z"/></svg>';
+                case 'node':
+                    return '<svg class="ico" viewBox="-7 -7 14 14" aria-hidden="true"><circle class="node" cx="0" cy="0" r="3"/></svg>';
+                default:
+                    return '<svg class="ico" viewBox="-7 -7 14 14" aria-hidden="true"><circle cx="0" cy="0" r="2"></circle></svg>';
+            }
+        };
+
+        menu.innerHTML = `
+            <div class="overlap-menu-hd">Mehrere Elemente an dieser Position</div>
+            <div class="overlap-menu-list">
+                ${items.map((it, i) => `
+                <button class="overlap-item" role="option" data-idx="${i}">
+                    ${iconFor(it.kind)}
+                    <span class="kind">${esc(it.kind || '')}</span>
+                    <span class="label">${esc(labelOf(it))}</span>
+                    <span class="id">${esc(it.id || it.key || it.edgeId || '')}</span>
+                </button>
+            `).join('')}
+            </div>
+           `;
+
+
+        // Click → selektieren
+        menu.addEventListener('click', (e) => {
+            const btn = e.target.closest('button.overlap-item');
+            if (!btn) return;
+            const it = items[+btn.dataset.idx];
+            const selId = it.id || it.key || it.edgeId;
+            if (selId != null) this.onSelect([selId]);
+            this.closeOverlapMenu();
+        });
+
+        // Tastatur: ↑/↓ navigieren, Enter selektieren, ESC schließen
+        this._outsideKeyHandler = (e) => {
+            if (!this._menuEl) return;
+            const focusables = Array.from(this._menuEl.querySelectorAll('button.overlap-item'));
+            const idx = focusables.indexOf(document.activeElement);
+            if (e.key === 'Escape') {
+                this.closeOverlapMenu();
+                e.preventDefault();
+            } else if (e.key === 'ArrowDown') {
+                const n = (idx + 1) % focusables.length;
+                focusables[n].focus();
+                e.preventDefault();
+            } else if (e.key === 'ArrowUp') {
+                const n = (idx - 1 + focusables.length) % focusables.length;
+                focusables[n].focus();
+                e.preventDefault();
+            } else if (e.key === 'Enter' && idx >= 0) {
+                focusables[idx].click();
+                e.preventDefault();
+            }
+        };
+
+        // Outside-Click schließt (Capture-Phase)
+        this._outsideClickHandler = (e) => {
+            if (!this._menuEl) return;
+            if (!this._menuEl.contains(e.target)) this.closeOverlapMenu();
+        };
+
+        document.addEventListener('keydown', this._outsideKeyHandler, true);
+        document.addEventListener('mousedown', this._outsideClickHandler, true);
+
+        // In Overlay einhängen
+        this._overlayRoot.node().appendChild(menu);
+        this._menuEl = menu;
+
+        // Fokus auf erstes Item
+        const first = this._menuEl.querySelector('button.overlap-item');
+        (first || this._menuEl).focus();
+    }
+
 
 }
