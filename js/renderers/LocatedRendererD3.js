@@ -407,7 +407,6 @@ export default class LocatedRendererD3 {
             .on('interrupt', maintainHL)
             .on('end', maintainHL);
 
-
         // ensure highlights persist through any FX transitions
         reapplyHighlights = () => {
             applySelHighlight(eMerged);
