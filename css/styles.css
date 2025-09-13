@@ -17,16 +17,17 @@ button {
 }
 
 :root {
-    --balise-fill: #61acf5; /* bisher in .elems .balise */
+    --balise-fill: #61acf5; 
     --balise-stroke: #477EAFF4;
-    --signal-fill: #ef476f; /* bisher in .elems .signal */
+    --signal-fill: #ef476f; 
     --signal-stroke: #782034;
-    --tds-fill: #06d6a0; /* bisher in .elems .tdscomp */
+    --tds-fill: #06d6a0; 
     --tds-stroke: #0d4f3f;
-    --node-fill: #000000; /* angleichen, falls du blau willst, hier ändern */
-    --lines-stoke: #000000;
-    --speed-stoke: #8ecae6;
-
+    --node-fill: #000000; 
+    --lines-stroke: #000000;
+    --speed-stroke: #24e96c;
+    --tds-sec-stroke: #a855f7;
+    --header3-color: #475569;
 }
 
 /* Topbar */
@@ -101,7 +102,7 @@ button {
 .rightpanel h3 {
     margin: 0 0 8px;
     font-size: 14px;
-    color: #475569;
+    color: (var(--header3-color));
     text-transform: uppercase;
 }
 
@@ -165,7 +166,7 @@ button {
 .leftpanel h3 {
     margin: 0 0 8px;
     font-size: 14px;
-    color: #475569;
+    color: var(--header3-color);
     text-transform: uppercase;
 }
 
@@ -176,6 +177,18 @@ button {
     padding: 4px 0;
     font-size: 14px;
 }
+
+/* Control panel checkbox colors */
+.leftpanel input[type="checkbox"] {
+    accent-color: #475569; /* default */
+}
+
+/* Match element colors */
+.leftpanel #chk-balises { accent-color: var(--balise-fill); }
+.leftpanel #chk-signals { accent-color: var(--signal-fill); }
+.leftpanel #chk-tdscomp { accent-color: var(--tds-fill); }
+.leftpanel #chk-speed  { accent-color: var(--speed-stroke); }
+.leftpanel #chk-tdssec    { accent-color: var(--tds-sec-stroke); }
 
 .leftpanel hr {
     border: 0;
@@ -230,13 +243,13 @@ button {
 
 /* Overlays */
 .overlays .speed line.speed {
-    stroke: #22c55e;
+    stroke: var(--speed-stroke);
     stroke-width: 1.5;
     opacity: .9;
 }
 
 .overlays .tds line.tds {
-    stroke: #a855f7;
+    stroke: var(--tds-sec-stroke);
     stroke-width: 1.5;
     opacity: .7;
     stroke-dasharray: 4 3;
@@ -272,12 +285,12 @@ button {
 }
 
 .overlays .speed {
-    stroke: #8ecae6;
+    stroke: var(--speed-stroke);
     stroke-width: 3;
 }
 
 .overlays .tds {
-    stroke: #ffadad;
+    stroke: var(--tds-sec-stroke);
     stroke-width: 5;
     stroke-opacity: .35;
 }
