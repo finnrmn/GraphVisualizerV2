@@ -254,6 +254,7 @@ export default class Events {
                 const label = el.name || el.label || null;
                 title = `${type}${label ? ` – ${label}` : ''}`;
                 if (id) rows.push(['ID', id]);
+                if (label) rows.push(['Name', label]);
                 if (edgeId) rows.push(['Edge', edgeId]);
                 if (isLocated && Number.isFinite(el.ikAB)) rows.push(['IK (A→B)', String(el.ikAB)]);
                 if (!isLocated && Number.isFinite(el.distanceFromA)) rows.push(['Dist. from A [m]', String(Math.round(el.distanceFromA))]);
@@ -261,7 +262,7 @@ export default class Events {
                 if (el.type) rows.push(['Type', el.type]);
 
                 // Enrich with edge details
-                if (edgeId) this._pushEdgeBasics(rows, edgeId);
+                if (edgeId) this._pushEdgeBasics(rows, edgeId, { labelKey: 'Edge Name' });
             } else if (typeof id === 'string' && id.includes(':')) {
                 // Segment selection: id format edgeId:index
                 const edgeId = id.split(':')[0];
@@ -280,7 +281,7 @@ export default class Events {
                         if (Number.isFinite(seg.ang1) && Number.isFinite(seg.ang2)) rows.push(['Angles (rad)', `${seg.ang1.toFixed(2)} → ${seg.ang2.toFixed(2)}`]);
                     }
                     // Edge basics
-                    this._pushEdgeBasics(rows, edgeId);
+                    this._pushEdgeBasics(rows, edgeId, { labelKey: 'Edge Name' });
                 } else {
                     // Fallback if no seg found
                     title = `Item – ${id}`;
@@ -309,7 +310,7 @@ export default class Events {
         this.elDetailList.innerHTML = htmlCards.join('');
     }
 
-    _pushEdgeBasics(rows, edgeId) {
+    _pushEdgeBasics(rows, edgeId, opts = {}) {
         try {
             const e = this.controller.store.getEdge(edgeId);
             if (!e) return;
@@ -317,7 +318,8 @@ export default class Events {
             const B = e.nodeIdB || e.b || null;
             const L = this.controller.store.getEdgeLength(edgeId);
             const label = this.controller.store.getEdgeLabel(edgeId);
-            if (label) rows.push(['Name', label]);
+            const labelKey = opts.labelKey || 'Name';
+            if (label) rows.push([labelKey, label]);
             if (A) rows.push(['Node A', A]);
             if (B) rows.push(['Node B', B]);
             if (Number.isFinite(L)) rows.push(['Length [m]', String(Math.round(L))]);
