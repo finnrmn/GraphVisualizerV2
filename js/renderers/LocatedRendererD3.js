@@ -63,6 +63,10 @@ export default class LocatedRendererD3 {
     update(view, state = {}) {
         console.log("LocatedRendererD3.update", view, state);
         if (!view) return;
+
+        // Store current view and state for cluster operations
+        this._lastView = view;
+        this._lastState = state;
         // Flip/Center Optionen auslesen
         const opts = state.projectorOptions || {};
         let flipX = !!opts.flipX;
@@ -122,6 +126,18 @@ export default class LocatedRendererD3 {
             return Array.isArray(arr) ? arr.map(transform) : arr;
         }
 
+        // Auswahl-/Highlight-Helfer
+        const selSet = new Set(state.selection || []);
+        const selKey = (d) => selectionKeyForDatum(d);
+        const applySelHighlight = (selection) =>
+            selection
+                .classed('is-selected', d => selSet.has(selKey(d)))
+                .classed('is-highlighted', d => isHighlighted(d, selSet));
+
+        // reapply all highlights after transitions or FX updates
+        let reapplyHighlights = () => {};
+        const maintainHL = () => reapplyHighlights();
+
         // --- Edges ---
         const edges = Array.isArray(view.geo_edges) ? view.geo_edges.map(e => ({...e, polyline: transformPolyline(e.polyline)})) : [];
         const cleanPolyline = (d) => (d.polyline || []).filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
@@ -130,22 +146,20 @@ export default class LocatedRendererD3 {
     // (bereits oben deklariert und transformiert)
 
 
-        const eSel = this.gEdges.selectAll('path.edge').data(edges, (d) => d.edgeId || d.id);
+        const eSel = this.gEdges.selectAll('path.edge').data(edges, d => d.edgeId || d.id);
         eSel.exit().remove();
         const eMerged = eSel.enter().append('path').attr('class', 'edge')
             .merge(eSel)
-            .attr('d', (d) => this.lineGen(cleanPolyline(d)))
+            .attr('d', d => this.lineGen(cleanPolyline(d)))
             .attr('pointer-events', 'stroke')
-            .classed('is-selected', (d) => !!state.selection && state.selection.includes(d.edgeId || d.id))
-            .classed('is-highlighted', (d) => isHighlighted(d, state.selection))
             .on('click', (ev, d) => this.onSelect([d.edgeId || d.id]));
+        applySelHighlight(eMerged);
         // keep highlighted edges visible during animations/overlaps
-        eMerged.filter(d => isHighlighted(d, state.selection)).raise();
+        eMerged.filter(d => isHighlighted(d, selSet)).raise();
 
         const f = (state && state.filters) ? state.filters : {};
         const showEdges = (f.showEdges !== false); // default = an
         const hideSelected = !!f.hideSelectedElements;
-        const selSet = new Set(state.selection || []);
         this.gEdges.style("display", showEdges ? null : "none");
         this.gEdges.selectAll('path.edge')
             .style('display', d => (showEdges && !(hideSelected && selSet.has(d.edgeId || d.id))) ? null : 'none');
@@ -217,16 +231,15 @@ export default class LocatedRendererD3 {
 
         // --- Nodes (optional) ---
         const nodes = Array.isArray(view.nodes) ? view.nodes.map(transform) : [];
-        const nSel = this.gElems.selectAll('circle.node').data(nodes, (d) => d.id);
+        const nSel = this.gElems.selectAll('circle.node').data(nodes, d => d.id);
         nSel.exit().remove();
         const nMerged = nSel.enter().append('circle').attr('class', 'node').attr('r', 2.5)
             .merge(nSel)
-            .attr('cx', (d) => d.x)
-            .attr('cy', (d) => d.y)
-            .classed('is-selected', (d) => selSet.has(d.id))
-            .classed('is-highlighted', (d) => isHighlighted(d, state.selection))
+            .attr('cx', d => d.x)
+            .attr('cy', d => d.y)
             .on('click', (ev, d) => this.onSelect([d.id]));
-        nMerged.filter(d => isHighlighted(d, state.selection)).raise();
+        applySelHighlight(nMerged);
+        nMerged.filter(d => isHighlighted(d, selSet)).raise();
 
         // Labels: Nodes & Elemente gesteuert über Names/IDs
         const showNames = (f.showNames !== false);
@@ -234,7 +247,6 @@ export default class LocatedRendererD3 {
         const showAnyLabel = showNames || showIds;
 
         const composeLabel = (d) => {
-            if (!showAnyLabel) return '';
             const nm = (showNames ? (d.name ?? d.label ?? null) : null);
             const id = (showIds ? (d.id ?? null) : null);
             if (nm && id && nm !== id) return `${nm} [${id}]`;
@@ -250,7 +262,7 @@ export default class LocatedRendererD3 {
             .merge(lNodes)
             .attr('x', d => d.x)
             .attr('y', d => d.y)
-            .text(d => composeLabel(d))
+            .text(d => showAnyLabel ? composeLabel(d) : '')
             .style('display', d => (showAnyLabel && (f.showNodes !== false) && !(hideSelected && selSet.has(d.id))) ? null : 'none');
 
         // Sichtbarkeit von Knoten (Kreise) unabhängig von Labels
@@ -274,7 +286,7 @@ export default class LocatedRendererD3 {
             .merge(lEdges)
             .attr('x', d => d.x)
             .attr('y', d => d.y)
-            .text(d => composeLabel(d))
+            .text(d => showAnyLabel ? composeLabel(d) : '')
             .style('display', d => (showAnyLabel && showEdges && !(hideSelected && selSet.has(d.id))) ? null : 'none');
 
         // --- Segment Labels (Names & IDs) ---
@@ -294,7 +306,7 @@ export default class LocatedRendererD3 {
             .merge(lSegs)
             .attr('x', d => d.x)
             .attr('y', d => d.y)
-            .text(d => composeLabel(d))
+            .text(d => showAnyLabel ? composeLabel(d) : '')
             .style('display', d => (showAnyLabel && showSegments && !(hideSelected && selSet.has(d.id))) ? null : 'none');
 
         // --- Elemente (Balisen / Signale / TDS-Komponenten) ---
@@ -310,7 +322,7 @@ export default class LocatedRendererD3 {
         const tdcBase = showTds ? (elems.tds_components || []).map(d => { const p = transform({x: d.x, y: d.y}); const key = `${d.edgeId}:${d.ikAB ?? (p.x+','+p.y)}`; return {...d, baseX: p.x, baseY: p.y, key: makeKey(d, key)}; }) : [];
 
         // Einheitliche Selektions-Identität (nur aus Auswahl abgeleitet)
-        const selKey = (d) => selectionKeyForDatum(d);
+
 
         // Clusterbildung nach gerundeter Basisposition
         const roundKey = (x, y) => `${Math.round(x)}:${Math.round(y)}`;
@@ -359,7 +371,7 @@ export default class LocatedRendererD3 {
         lElems.exit().remove();
         lElems.enter().append('text').attr('class', 'label elem-label').attr('dy', -8)
             .merge(lElems)
-            .text(d => composeLabel(d))
+            .text(d => showAnyLabel ? composeLabel(d) : '')
             .style('display', d => (showAnyLabel && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none')
             .transition().duration(250)
             .attr('x', d => d.x)
@@ -368,17 +380,19 @@ export default class LocatedRendererD3 {
         // Hilfsfunktion: Klick-Logik für Elemente in Clustern
         const onElemClick = (d, ev) => {
             const ck = roundKey(d.baseX, d.baseY);
+            const cl = clusters.get(ck);
+            const n = cl ? cl.items.length : 1;
             const isExpanded = this._clusterState.get(ck) === true;
-            if (!isExpanded) {
+            if (n > 1 && !isExpanded) {
                 // 1) War kollabiert -> nur expandieren, KEINE Selektion
                 this._clusterState.set(ck, true);
-                // Neu zeichnen, damit die Elemente auseinandergehen
-                this.update(view, state);
+                // Nur Cluster-Positionen aktualisieren, nicht das gesamte Rendering
+                this.updateClusterPositions(clusters, rings, posByKey, selSet, selKey, showAnyLabel, composeLabel, showBal, showSig, showTds, hideSelected);
                 // Event verbrauchen
                 if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
                 return;
             }
-            // 2) War expandiert -> dieses Element selektieren und danach wieder kollabieren
+            // 2) Entweder war expandiert oder nur ein Element vorhanden -> selektieren und kollabieren
             this._clusterState.set(ck, false);
             const selId = d.id || d.key || d.edgeId;
             this.onSelect([selId]);
@@ -399,7 +413,10 @@ export default class LocatedRendererD3 {
             .merge(ringSel)
             .classed('is-focused', true)
             .transition().duration(250)
-            .attr('cx', d => d.cx).attr('cy', d => d.cy).attr('r', d => d.r);
+            .attr('cx', d => d.cx).attr('cy', d => d.cy).attr('r', d => d.r)
+            .on('start', maintainHL)
+            .on('interrupt', maintainHL)
+            .on('end', maintainHL);
 
         // --- Balisen (finale Positionen, animiert)
         const balSel = this.gElems.selectAll('circle.balise').data(balBase, d => d.id || d.key);
@@ -407,24 +424,15 @@ export default class LocatedRendererD3 {
         const balEnter = balSel.enter().append('circle').attr('class', 'balise').attr('r', 3)
             .on('click', (ev, d) => onElemClick(d, ev));
         const balMerged = balEnter.merge(balSel)
-            .style('display', d => (showBal && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none')
-            .classed('is-selected', d => selSet.has(selKey(d)))
-            .classed('is-highlighted', d => isHighlighted(d, state.selection));
-        balMerged.filter(d => selSet.has(selKey(d)) || isHighlighted(d, state.selection)).raise();
+            .style('display', d => (showBal && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
+        applySelHighlight(balMerged);
+        balMerged.filter(d => isHighlighted(d, selSet)).raise();
         balMerged.transition().duration(250)
             .attr('cx', d => (posByKey.get(d.key)?.x ?? d.baseX))
             .attr('cy', d => (posByKey.get(d.key)?.y ?? d.baseY))
-            // Re-assert highlight/selection on both interrupt and end
-            .on('interrupt', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            })
-            .on('end', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            });
+            .on('start', maintainHL)
+            .on('interrupt', maintainHL)
+            .on('end', maintainHL);
 
         // --- Signale ---
         const sigSel = this.gElems.selectAll('rect.signal').data(sigBase, d => d.id || d.key);
@@ -432,23 +440,15 @@ export default class LocatedRendererD3 {
         const sigEnter = sigSel.enter().append('rect').attr('class', 'signal').attr('width', 6).attr('height', 6).attr('rx', 1)
             .on('click', (ev, d) => onElemClick(d, ev));
         const sigMerged = sigEnter.merge(sigSel)
-            .style('display', d => (showSig && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none')
-            .classed('is-selected', d => selSet.has(selKey(d)))
-            .classed('is-highlighted', d => isHighlighted(d, state.selection));
-        sigMerged.filter(d => selSet.has(selKey(d)) || isHighlighted(d, state.selection)).raise();
+            .style('display', d => (showSig && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
+        applySelHighlight(sigMerged);
+        sigMerged.filter(d => isHighlighted(d, selSet)).raise();
         sigMerged.transition().duration(250)
             .attr('x', d => ((posByKey.get(d.key)?.x ?? d.baseX) - 3))
             .attr('y', d => ((posByKey.get(d.key)?.y ?? d.baseY) - 3))
-            .on('interrupt', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            })
-            .on('end', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            });
+            .on('start', maintainHL)
+            .on('interrupt', maintainHL)
+            .on('end', maintainHL);
 
         // --- TDS Komponenten ---
         const tdcSel = this.gElems.selectAll('path.tdscomp').data(tdcBase, d => d.id || d.key);
@@ -456,25 +456,27 @@ export default class LocatedRendererD3 {
         const tdcEnter = tdcSel.enter().append('path').attr('class', 'tdscomp').attr('d', 'M0,-5 L5,0 L0,5 L-5,0 Z')
             .on('click', (ev, d) => onElemClick(d, ev));
         const tdcMerged = tdcEnter.merge(tdcSel)
-            .style('display', d => (showTds && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none')
-            .classed('is-selected', d => selSet.has(selKey(d)))
-            .classed('is-highlighted', d => isHighlighted(d, state.selection));
-        tdcMerged.filter(d => selSet.has(selKey(d)) || isHighlighted(d, state.selection)).raise();
+            .style('display', d => (showTds && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
+        applySelHighlight(tdcMerged);
+        tdcMerged.filter(d => isHighlighted(d, selSet)).raise();
         tdcMerged.transition().duration(250)
             .attr('transform', d => {
                 const p = posByKey.get(d.key) || {x: d.baseX, y: d.baseY};
                 return `translate(${p.x},${p.y})`;
             })
-            .on('interrupt', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            })
-            .on('end', function(d){
-                const sel = d3.select(this);
-                const hi = isHighlighted(d, state.selection);
-                sel.classed('is-selected', hi).classed('is-highlighted', hi);
-            });
+            .on('start', maintainHL)
+            .on('interrupt', maintainHL)
+            .on('end', maintainHL);
+
+        // ensure highlights persist through any FX transitions
+        reapplyHighlights = () => {
+            applySelHighlight(eMerged);
+            applySelHighlight(nMerged);
+            applySelHighlight(balMerged);
+            applySelHighlight(sigMerged);
+            applySelHighlight(tdcMerged);
+        };
+        reapplyHighlights();
 
         // --- Overlays ---
         const speed = (view.overlays?.speed || []).filter((s) => s && s.startXY && s.endXY).map(s => ({
@@ -500,5 +502,83 @@ export default class LocatedRendererD3 {
             .merge(tSel)
             .attr('x1', (d) => d.startXY.x).attr('y1', (d) => d.startXY.y)
             .attr('x2', (d) => d.endXY.x).attr('y2', (d) => d.endXY.y);
+    }
+
+    /**
+     * Updates only cluster positions without re-rendering the entire graph.
+     * This preserves all visual states (highlighting, visibility toggles, etc.)
+     */
+    updateClusterPositions(clusters, rings, posByKey, selSet, selKey, showAnyLabel, composeLabel, showBal, showSig, showTds, hideSelected) {
+        // Recalculate positions for expanded clusters
+        const updatedPosByKey = new Map();
+        const updatedRings = [];
+
+        clusters.forEach((cl, ck) => {
+            const n = cl.items.length;
+            const expanded = this._clusterState.get(ck) === true;
+            const R = expanded && n > 1 ? 14 : 0; // Radius in SVG-Einheiten
+            if (expanded && n > 1) {
+                updatedRings.push({cx: cl.x, cy: cl.y, r: R + 8, id: ck});
+            }
+            cl.items.forEach((it, i) => {
+                const ang = n > 1 && R > 0 ? (2 * Math.PI * i) / n : 0;
+                const dx = R * Math.cos(ang), dy = R * Math.sin(ang);
+                const fx = cl.x + dx, fy = cl.y + dy;
+                updatedPosByKey.set(it.key, {x: fx, y: fy});
+            });
+        });
+
+        // Update ring positions
+        const ringSel = this.gFX.selectAll('circle.cluster-ring').data(updatedRings, d => d.id);
+        ringSel.exit().remove();
+        ringSel.enter().append('circle').attr('class', 'cluster-ring')
+            .attr('fill', 'none').attr('stroke', '#94a3b8').attr('stroke-dasharray', '4 3').attr('stroke-width', 1)
+            .on('click', (ev, d) => {
+                this._clusterState.set(d.id, false);
+                // For ring collapse, we need to do a full update since we're changing cluster state
+                // This is acceptable since collapsing should be a more significant action
+                this.update(this._lastView, this._lastState);
+                if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+            })
+            .merge(ringSel)
+            .classed('is-focused', true)
+            .transition().duration(250)
+            .attr('cx', d => d.cx).attr('cy', d => d.cy).attr('r', d => d.r);
+
+        // Update element positions (only those that are visible)
+        if (showBal) {
+            const balSel = this.gElems.selectAll('circle.balise');
+            balSel.transition().duration(250)
+                .attr('cx', d => (updatedPosByKey.get(d.key)?.x ?? d.baseX))
+                .attr('cy', d => (updatedPosByKey.get(d.key)?.y ?? d.baseY));
+        }
+
+        if (showSig) {
+            const sigSel = this.gElems.selectAll('rect.signal');
+            sigSel.transition().duration(250)
+                .attr('x', d => ((updatedPosByKey.get(d.key)?.x ?? d.baseX) - 3))
+                .attr('y', d => ((updatedPosByKey.get(d.key)?.y ?? d.baseY) - 3));
+        }
+
+        if (showTds) {
+            const tdcSel = this.gElems.selectAll('path.tdscomp');
+            tdcSel.transition().duration(250)
+                .attr('transform', d => {
+                    const p = updatedPosByKey.get(d.key) || {x: d.baseX, y: d.baseY};
+                    return `translate(${p.x},${p.y})`;
+                });
+        }
+
+        // Update label positions (only if labels are enabled)
+        if (showAnyLabel) {
+            const lElems = this.gLabels.selectAll('text.elem-label');
+            lElems.transition().duration(250)
+                .attr('x', d => (updatedPosByKey.get(d.key)?.x ?? d.baseX))
+                .attr('y', d => (updatedPosByKey.get(d.key)?.y ?? d.baseY));
+        }
+
+        // Store current state for potential future full updates
+        this._lastClusters = clusters;
+        this._lastPosByKey = updatedPosByKey;
     }
 }
