@@ -203,11 +203,6 @@ button {
     stroke-width: 3 !important;
 }
 
-.clusterfx .cluster-ring.is-focused {
-    stroke: #94a3b8;
-    stroke-dasharray: 4 3;
-}
-
 .labels text.label {
     font: 10px/1 sans-serif;
     fill: #334155;
