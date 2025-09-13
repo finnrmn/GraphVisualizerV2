@@ -332,7 +332,7 @@ export default class Events {
         <div class="detail-card" data-sel-id="${id}">
             <div class="card-head">
                 <div class="title">${title}</div>
-                <button class="remove-btn" data-remove-id="${id}" title="Entfernen">Entfernen</button>
+                <button class="remove-btn" data-remove-id="${id}" title="remove">remove</button>
             </div>
             <div class="rows">${rowsHtml}</div>
         </div>`;

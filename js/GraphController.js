@@ -15,7 +15,7 @@ export default class GraphController {
         this.bus = bus || new MiniEventBus();
 
         this.mode = 'located';
-        this.filters = {}; // beliebig erweiterbar
+        this.filters = {}; 
         this.projectorOptions = {maxChord: 1, includeSpeed: true, includeTopEdges: true, includeTdsSections: true};
         this.selection = new Set();
         this.hover = null;
@@ -283,7 +283,7 @@ export default class GraphController {
                 }
             }
 
-            if (!selId) return {ok: false, reason: 'Kein Treffer gefunden. Prüfen Sie ID/Name.'};
+            if (!selId) return {ok: false, reason: 'No matches found. Check ID/Name!'};
 
             // Selection aktualisieren
             this.addToSelection([selId]);
@@ -299,7 +299,7 @@ export default class GraphController {
             return {ok: true, kind, id: selId};
         } catch (e) {
             console.error('searchAndSelect failed', e);
-            return {ok: false, reason: 'Interner Fehler bei der Suche'};
+            return {ok: false, reason: 'Internal error during search'};
         }
     }
 }

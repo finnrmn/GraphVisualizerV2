@@ -45,10 +45,10 @@
         <!-- Geometrie-Ansicht -->
         <h3>Geometry Visibility</h3>
         <label><input id="chk-nodes" type="checkbox" checked> Nodes</label>
-        <label><input id="chk-edges" type="checkbox" checked> Kanten (Polyline)</label>
-        <label><input id="chk-segs" type="checkbox"> Segmente (Lines/Arcs)</label>
-        <label style="padding-left: 18px;"><input id="chk-arcsOnly" type="checkbox"> Nur Arcs</label>
-        <label><input id="chk-seg-arrows" type="checkbox" checked> Pfeile auf Segmenten</label>
+        <label><input id="chk-edges" type="checkbox" checked> Edges</label>
+        <label><input id="chk-segs" type="checkbox"> Lines/Arcs</label>
+        <label style="padding-left: 18px;"><input id="chk-arcsOnly" type="checkbox">Arcs only</label>
+        <label><input id="chk-seg-arrows" type="checkbox" checked> Lines/Arcs direction</label>
         <hr>
         <h3>Names & IDs</h3>
         <label><input id="chk-names" type="checkbox" checked> Names</label>
@@ -66,7 +66,7 @@
         <h3>Search Elements</h3>
         <div style="display:flex; gap:6px; align-items:center;">
             <input id="txt-search" type="text" placeholder="ID oder Name" style="flex:1; padding:4px 6px;" />
-            <button id="btn-search" type="button">Suchen</button>
+            <button id="btn-search" type="button">search</button>
         </div>
         <div id="search-status" style="min-height:18px; font-size:12px; color:#6b7280; margin-top:4px;"></div>
     </aside>
@@ -77,7 +77,7 @@
     <aside class="rightpanel">
         <div class="rightpanel-header">
             <h3>Selected Elements</h3>
-            <button id="btn-clear-selection" title="Alle entfernen">Leeren</button>
+            <button id="btn-clear-selection" title="remove all">remove all</button>
         </div>
         <div id="detail-list" class="detail-list" aria-live="polite"></div>
     </aside>

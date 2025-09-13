@@ -1,4 +1,5 @@
 import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm';
+import {appendIconG} from '../utils/icons.js';
 
 export default class DynamicRendererD3 {
     constructor({mount, onSelect} = {}) {
@@ -90,13 +91,18 @@ export default class DynamicRendererD3 {
             .style("display", d => (showEdges && !(hideSelected && selSet.has(d.id))) ? null : "none");
 
         // Nodes
-        const nodeSel = this.gNodes.selectAll("circle.node").data(view.nodes, d => d.id);
+        const nodeSel = this.gNodes.selectAll("g.node").data(view.nodes, d => d.id);
         nodeSel.exit().remove();
-        nodeSel.enter().append("circle").attr("class", "node").attr("r", 5)
-            .merge(nodeSel)
-            .attr("cx", d => d.x).attr("cy", d => d.y)
+        const nodeEnter = nodeSel.enter().append("g").attr("class", "node");
+        nodeEnter.each(function() { appendIconG(d3.select(this), 'node'); });
+        nodeEnter.append("title").text(d => d.label || d.id);
+        nodeEnter.merge(nodeSel)
+            .attr("transform", d => `translate(${d.x},${d.y}) scale(${(5/3).toFixed(6)})`)
             .classed("is-selected", d => selSet.has(d.id))
-            .call(sel => sel.append("title").text(d => d.label || d.id))
+            .each(function(d) {
+                const selected = selSet.has(d.id);
+                d3.select(this).selectAll('circle,rect,path').classed('is-selected', selected);
+            })
             .on("click", (ev, d) => this.onSelect([d.id]))
             .style("display", d => (showNodes && !(hideSelected && selSet.has(d.id))) ? null : "none");
 
@@ -211,39 +217,40 @@ export default class DynamicRendererD3 {
 
         // Balises
         const balData = showBal ? (view.elements?.balises || []) : [];
-        const balSel = this.gElems.selectAll("circle.balise").data(balData, d => d.id || `${d.edgeId}:${d.distanceFromA}`);
+        const balSel = this.gElems.selectAll("g.balise").data(balData, d => d.id || `${d.edgeId}:${d.distanceFromA}`);
         balSel.exit().remove();
-        balSel.enter().append("circle").attr("class", "balise").attr("r", 3)
-            .merge(balSel)
-            .attr("cx", d => place(d.edgeId, d.distanceFromA).x)
-            .attr("cy", d => place(d.edgeId, d.distanceFromA).y)
+        const balEnter = balSel.enter().append("g").attr("class", "balise");
+        balEnter.each(function() { appendIconG(d3.select(this), 'balise'); });
+        balEnter.merge(balSel)
+            .attr("transform", d => { const p = place(d.edgeId, d.distanceFromA); return `translate(${p.x},${p.y}) scale(1)`; })
             .classed("is-selected", d => !!d.id && selSet.has(d.id))
+            .each(function(d){ const sel = !!d.id && selSet.has(d.id); d3.select(this).selectAll('circle,rect,path').classed('is-selected', sel); })
             .on("click", (ev, d) => this.onSelect([d.id || d.edgeId]))
             .style("display", d => (showBal && !(hideSelected && d.id && selSet.has(d.id))) ? null : "none");
 
         // Signals
         const sigData = showSig ? (view.elements?.signals || []) : [];
-        const sigSel = this.gElems.selectAll("rect.signal").data(sigData, d => d.id || `${d.edgeId}:${d.distanceFromA}`);
+        const sigSel = this.gElems.selectAll("g.signal").data(sigData, d => d.id || `${d.edgeId}:${d.distanceFromA}`);
         sigSel.exit().remove();
-        sigSel.enter().append("rect").attr("class", "signal").attr("width", 6).attr("height", 6).attr("rx", 1)
-            .merge(sigSel)
-            .attr("x", d => place(d.edgeId, d.distanceFromA).x - 3)
-            .attr("y", d => place(d.edgeId, d.distanceFromA).y - 3)
+        const sigEnter = sigSel.enter().append("g").attr("class", "signal");
+        sigEnter.each(function() { appendIconG(d3.select(this), 'signal'); });
+        sigEnter.merge(sigSel)
+            .attr("transform", d => { const p = place(d.edgeId, d.distanceFromA); return `translate(${p.x},${p.y}) scale(${(6/10).toFixed(6)})`; })
             .classed("is-selected", d => !!d.id && selSet.has(d.id))
+            .each(function(d){ const sel = !!d.id && selSet.has(d.id); d3.select(this).selectAll('circle,rect,path').classed('is-selected', sel); })
             .on("click", (ev, d) => this.onSelect([d.id || d.edgeId]))
             .style("display", d => (showSig && !(hideSelected && d.id && selSet.has(d.id))) ? null : "none");
 
         // TDS Components
         const tdcData = showTds ? (view.elements?.tds_components || []) : [];
-        const tdcSel = this.gElems.selectAll("path.tdscomp").data(tdcData, d => d.id || `${d.edgeId}:${d.distanceFromA}`);
+        const tdcSel = this.gElems.selectAll("g.tdscomp").data(tdcData, d => d.id || `${d.edgeId}:${d.distanceFromA}`);
         tdcSel.exit().remove();
-        tdcSel.enter().append("path").attr("class", "tdscomp").attr("d", "M0,-5 L5,0 L0,5 L-5,0 Z")
-            .merge(tdcSel)
-            .attr("transform", d => {
-                const p = place(d.edgeId, d.distanceFromA);
-                return `translate(${p.x},${p.y})`;
-            })
+        const tdcEnter = tdcSel.enter().append("g").attr("class", "tdscomp");
+        tdcEnter.each(function() { appendIconG(d3.select(this), 'tds'); });
+        tdcEnter.merge(tdcSel)
+            .attr("transform", d => { const p = place(d.edgeId, d.distanceFromA); return `translate(${p.x},${p.y}) scale(${(5/7).toFixed(6)})`; })
             .classed("is-selected", d => !!d.id && selSet.has(d.id))
+            .each(function(d){ const sel = !!d.id && selSet.has(d.id); d3.select(this).selectAll('circle,rect,path').classed('is-selected', sel); })
             .on("click", (ev, d) => this.onSelect([d.id || d.edgeId]))
             .style("display", d => (showTds && !(hideSelected && d.id && selSet.has(d.id))) ? null : "none");
     }

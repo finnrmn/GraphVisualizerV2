@@ -1,5 +1,6 @@
 import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm';
 import {isHighlighted, selectionKeyForDatum} from '../utils/highlight.js';
+import {iconSvg, appendIconG, ensureArrowMarker} from '../utils/icons.js';
 
 export default class LocatedRendererD3 {
     constructor({mount, onSelect} = {}) {
@@ -57,17 +58,8 @@ export default class LocatedRendererD3 {
         this.gLabels = this.root.append('g').attr('class', 'labels');              // 6
 
 
-        const defs = this.svg.append('defs');
-        defs.append("marker")
-            .attr("id", "mk-arrow")
-            .attr("viewBox", "0 0 10 10")
-            .attr("refX", "10")
-            .attr("refY", "5")
-            .attr("markerWidth", "6")
-            .attr("markerHeight", "6")
-            .attr("orient", "auto")
-            .append("path")
-            .attr("d", "M 0 0 L 10 5 L 0 10 z");
+        // Ensure arrow marker exists in defs (shared)
+        ensureArrowMarker(this.svg);
 
         this.zoom = d3.zoom().scaleExtent([0.1, 16]).on('zoom', (ev) => this.root.attr('transform', ev.transform));
         this.svg.call(this.zoom);
@@ -159,7 +151,15 @@ export default class LocatedRendererD3 {
         const applySelHighlight = (selection) =>
             selection
                 .classed('is-selected', d => selSet.has(selKey(d)))
-                .classed('is-highlighted', d => isHighlighted(d, selSet));
+                .classed('is-highlighted', d => isHighlighted(d, selSet))
+                .each(function(d) {
+                    const selected = selSet.has(selKey(d));
+                    const hl = isHighlighted(d, selSet);
+                    d3.select(this)
+                        .selectAll('circle,rect,path')
+                        .classed('is-selected', selected)
+                        .classed('is-highlighted', hl);
+                });
 
         // reapply all highlights after transitions or FX updates
         let reapplyHighlights = () => {};
@@ -281,17 +281,17 @@ export default class LocatedRendererD3 {
         })) : [];
 
         // Render
-        const nSel = this.gNodes.selectAll('circle.node').data(nodeBase, d => d.id);
+        const nSel = this.gNodes.selectAll('g.node').data(nodeBase, d => d.id);
         nSel.exit().remove();
-        const nMerged = nSel.enter().append('circle').attr('class', 'node').attr('r', 2.5)
-            .merge(nSel)
-            .attr('cx', d => d.baseX)
-            .attr('cy', d => d.baseY)
+        const nEnter = nSel.enter().append('g').attr('class', 'node');
+        nEnter.each(function() { appendIconG(d3.select(this), 'node'); });
+        const nMerged = nEnter.merge(nSel)
+            .attr('transform', d => `translate(${d.baseX},${d.baseY}) scale(${(2.5/3).toFixed(6)})`)
             .on('click', (ev, d) => onElemClick(d, ev));
         applySelHighlight(nMerged);
         nMerged.filter(d => isHighlighted(d, selSet)).raise();
-        this.gNodes.selectAll('circle.node')
-            .style('display', d => (showNodes && !(hideSelected && selSet.has(d.id))) ? null : 'none');
+        this.gNodes.selectAll('g.node')
+            .style('display', d => (showNodes && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
 
         const composeLabel = (d) => {
             const nm = (showNames ? (d.name ?? d.label ?? null) : null);
@@ -472,45 +472,44 @@ export default class LocatedRendererD3 {
 
 
         // --- Balisen (finale Positionen, ohne Animation)
-        const balSel = this.gBaliseElems.selectAll('circle.balise').data(balBase, d => d.id || d.key);
+        const balSel = this.gBaliseElems.selectAll('g.balise').data(balBase, d => d.id || d.key);
         balSel.exit().remove();
-        const balEnter = balSel.enter().append('circle').attr('class', 'balise').attr('r', 3).attr('rx', 1);
+        const balEnter = balSel.enter().append('g').attr('class', 'balise');
+        balEnter.each(function() { appendIconG(d3.select(this), 'balise'); });
         const balMerged = balEnter.merge(balSel)
+            .attr('transform', d => `translate(${d.baseX},${d.baseY}) scale(1)`) // base r=3
             .on('click', (ev, d) => onElemClick(d, ev))
             .style('display', d => (showBal && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
 
         applySelHighlight(balMerged);
         balMerged.filter(d => isHighlighted(d, selSet)).raise();
-        balMerged
-            .attr('cx', d => d.baseX)
-            .attr('cy', d => d.baseY);
 
 
         // --- Signale ---
-        const sigSel = this.gSignalElems.selectAll('rect.signal').data(sigBase, d => d.id || d.key);
+        const sigSel = this.gSignalElems.selectAll('g.signal').data(sigBase, d => d.id || d.key);
         sigSel.exit().remove();
-        const sigEnter = sigSel.enter().append('rect').attr('class', 'signal').attr('width', 6).attr('height', 6).attr('rx', 1);
+        const sigEnter = sigSel.enter().append('g').attr('class', 'signal');
+        sigEnter.each(function() { appendIconG(d3.select(this), 'signal'); });
         const sigMerged = sigEnter.merge(sigSel)
+            .attr('transform', d => `translate(${d.baseX},${d.baseY}) scale(${(6/10).toFixed(6)})`)
             .on('click', (ev, d) => onElemClick(d, ev))
             .style('display', d => (showSig && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
 
         applySelHighlight(sigMerged);
         sigMerged.filter(d => isHighlighted(d, selSet)).raise();
-        sigMerged
-            .attr('x', d => (d.baseX - 3))
-            .attr('y', d => (d.baseY - 3));
 
         // --- TDS Komponenten ---
-        const tdcSel = this.gTdsElems.selectAll('path.tdscomp').data(tdcBase, d => d.id || d.key);
+        const tdcSel = this.gTdsElems.selectAll('g.tdscomp').data(tdcBase, d => d.id || d.key);
         tdcSel.exit().remove();
-        const tdcEnter = tdcSel.enter().append('path').attr('class', 'tdscomp').attr('d', 'M0,-5 L5,0 L0,5 L-5,0 Z');
+        const tdcEnter = tdcSel.enter().append('g').attr('class', 'tdscomp');
+        tdcEnter.each(function() { appendIconG(d3.select(this), 'tds'); });
         const tdcMerged = tdcEnter.merge(tdcSel)
+            .attr('transform', d => `translate(${d.baseX},${d.baseY}) scale(${(5/7).toFixed(6)})`)
             .on('click', (ev, d) => onElemClick(d, ev))
             .style('display', d => (showTds && !(hideSelected && selSet.has(selKey(d)))) ? null : 'none');
         applySelHighlight(tdcMerged);
         tdcMerged.filter(d => isHighlighted(d, selSet)).raise();
-        tdcMerged
-            .attr('transform', d => `translate(${d.baseX},${d.baseY})`);
+        // position/scale handled above
 
         // ensure highlights persist
         reapplyHighlights = () => {
@@ -565,27 +564,13 @@ export default class LocatedRendererD3 {
         menu.setAttribute('role', 'listbox');
         menu.tabIndex = 0;
 
-        // Inhalte
-        // kleine Escaper, damit Label/ID sicher sind
+        
         const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => (
             ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m]
             )));
 
-        // Icon je Kind (inline SVG; 14x14, zentriert um 0/0)
-        const iconFor = (kind) => {
-            switch ((kind || '').toLowerCase()) {
-                case 'balise':
-                    return '<svg class="ico" viewBox="-7 -7 14 14" aria-hidden="true"><path class="balise" d="M0,-6 L6,6 L-6,6 Z"/></svg>';
-                case 'signal':
-                    return '<svg class="ico" viewBox="-7 -7 14 14" aria-hidden="true"><rect class="signal" x="-5" y="-5" width="10" height="10" rx="2"/></svg>';
-                case 'tds':
-                    return '<svg class="ico" viewBox="-8 -8 16 16" aria-hidden="true"><path class="tdscomp" d="M0,-7 L7,0 L0,7 L-7,0 Z"/></svg>';
-                case 'node':
-                    return '<svg class="ico" viewBox="-7 -7 14 14" aria-hidden="true"><circle class="node" cx="0" cy="0" r="3"/></svg>';
-                default:
-                    return '<svg class="ico" viewBox="-7 -7 14 14" aria-hidden="true"><circle cx="0" cy="0" r="2"></circle></svg>';
-            }
-        };
+    
+        const iconFor = (kind) => iconSvg(kind);
 
         menu.innerHTML = `
             <div class="overlap-menu-hd">Mehrere Elemente an dieser Position</div>

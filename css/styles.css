@@ -316,6 +316,16 @@ svg {
     stroke-width: 3 !important;
 }
 
+/* Ensure selection/highlight applied to group descendants as well */
+.is-selected * {
+    stroke: #ffd166 !important;
+    stroke-width: 3 !important;
+}
+.is-highlighted * {
+    stroke: #ffd166 !important;
+    stroke-width: 3 !important;
+}
+
 /* Startup overlay */
 .startup-overlay {
     position: fixed;
