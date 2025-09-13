@@ -573,7 +573,7 @@ export default class LocatedRendererD3 {
         const iconFor = (kind) => iconSvg(kind);
 
         menu.innerHTML = `
-            <div class="overlap-menu-hd">Mehrere Elemente an dieser Position</div>
+            <div class="overlap-menu-hd">Multiple elements at this position</div>
             <div class="overlap-menu-list">
                 ${items.map((it, i) => `
                 <button class="overlap-item" role="option" data-idx="${i}">
