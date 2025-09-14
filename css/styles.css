@@ -1,8 +1,11 @@
-{
+/* Use a sane box model across the app */
+*, *::before, *::after {
     box-sizing: border-box;
 }
 html, body {
     height: 100%;
+    /* Prevent off‑canvas panels from causing horizontal scroll/whitespace */
+    overflow-x: hidden;
 }
 
 body {
@@ -515,6 +518,8 @@ svg {
   position: relative;
   display: block !important; /* override original grid */
   min-height: calc(100vh - var(--topbar-h));
+  /* Prevent absolute children (panels, shadows) from causing page scroll */
+  overflow: hidden;
 }
 
 /* views fill the main area beneath the header */
