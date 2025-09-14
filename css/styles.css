@@ -17,13 +17,10 @@ button {
 }
 
 :root {
-    --balise-fill: #61acf5; 
-    --balise-stroke: #477EAFF4;
-    --signal-fill: #ef476f; 
-    --signal-stroke: #782034;
-    --tds-fill: #06d6a0; 
-    --tds-stroke: #0d4f3f;
-    --node-fill: #000000; 
+    --balise-fill: #61acf5;--balise-stroke: #477EAFF4;
+    --signal-fill: #ef476f;--signal-stroke: #782034;
+    --tds-fill: #06d6a0;--tds-stroke: #0d4f3f;
+    --node-fill: #000000;--node-stroke: #111827;
     --lines-stroke: #000000;
     --speed-stroke: #24e96c;
     --tds-sec-stroke: #a855f7;
@@ -102,7 +99,7 @@ button {
 .rightpanel h3 {
     margin: 0 0 8px;
     font-size: 14px;
-    color: (var(--header3-color));
+    color: var(--header3-color);
     text-transform: uppercase;
 }
 
@@ -224,10 +221,7 @@ button {
     stroke-width: 1.5;
 }
 
-.edges path.edge.is-selected {
-    stroke: #ef4444;
-    stroke-width: 2.5;
-}
+
 
 /* New non-breaking highlight/focus aliases */
 .is-highlighted {
@@ -268,32 +262,18 @@ button {
     box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
 }
 
-/* Marker-Farben (du kannst das später in UI-Theme auslagern) */
+
 .elems .balise  { fill: var(--balise-fill);  stroke: var(--balise-stroke); }
 .elems .signal  { fill: var(--signal-fill);  stroke: var(--signal-stroke); }
 .elems .tdscomp { fill: var(--tds-fill);     stroke: var(--tds-stroke); }
-.nodes circle   { fill: var(--node-fill); }
-.segments .seg-line {
-    stroke: var(--lines-stoke);
-    stroke-width: 1.5px;
-}
+.nodes circle   { fill: var(--node-fill); stroke: var(--node-stroke);}
+.segments .seg-line {stroke: var(--lines-stroke);stroke-width: 1.5px;}
 
-.segments .seg-arc {
-    stroke: var(--lines-stoke);
-    stroke-width: 1.5px;
-    fill: none;
-}
+.segments .seg-arc {stroke: var(--lines-stroke);stroke-width: 1.5px;fill: none;}
 
-.overlays .speed {
-    stroke: var(--speed-stroke);
-    stroke-width: 3;
-}
+.overlays .speed {stroke: var(--speed-stroke);stroke-width: 3;}
 
-.overlays .tds {
-    stroke: var(--tds-sec-stroke);
-    stroke-width: 5;
-    stroke-opacity: .35;
-}
+.overlays .tds {stroke: var(--tds-sec-stroke);stroke-width: 5;stroke-opacity: .35;}
 
 svg {
     width: 100%;
@@ -367,13 +347,13 @@ svg {
 .startup-overlay h1 {
     margin: 0 0 6px 0;
     font-size: 18px;
-    color: #0f172a;
+    color: var(--header3-color);
 }
 
 .startup-overlay p {
     margin: 0 0 8px 0;
     font-size: 13px;
-    color: #334155;
+    color: var(--header3-color);
 }
 
 .startup-overlay label {
@@ -381,6 +361,7 @@ svg {
     flex-direction: column;
     gap: 6px;
     font-size: 14px;
+    color: var(--header3-color);
 }
 
 .startup-overlay input,
@@ -389,6 +370,7 @@ svg {
     border-radius: 8px;
     border: 1px solid #cbd5e1;
     font-size: 14px;
+    color: var(--header3-color);
 }
 
 #btn-start-load {
@@ -396,7 +378,7 @@ svg {
     padding: 8px 12px;
     border-radius: 8px;
     border: 1px solid #334155;
-    background: #1e293b;
+    background: var(--header3-color);
     color: #e2e8f0;
 }
 
@@ -474,7 +456,7 @@ svg {
 .overlap-menu .ico .balise  { fill: var(--balise-fill);  stroke: var(--balise-stroke); }
 .overlap-menu .ico .signal  { fill: var(--signal-fill);  stroke: var(--signal-stroke); }
 .overlap-menu .ico .tdscomp { fill: var(--tds-fill);     stroke: var(--tds-stroke); }
-.overlap-menu .ico .node    { fill: var(--node-fill);    stroke: #111827; /* dünner Rand optional */ }
+.overlap-menu .ico .node    { fill: var(--node-fill);    stroke: var(--node-stroke); }
 .overlap-item .badge {
     padding: 2px 6px;
     border-radius: 9999px;
