@@ -100,10 +100,15 @@ button {
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    margin: 0 0 8px;
+}
+
+/* Ensure header text aligns perfectly with action button */
+.rightpanel-header h3 {
+    margin: 0;
 }
 
 .rightpanel h3 {
-    margin: 0 0 8px;
     font-size: 14px;
     color: var(--header3-color);
     text-transform: uppercase;
@@ -136,7 +141,9 @@ button {
     font-weight: 600;
     font-size: 13px;
 }
-
+.btn-clear-selection{
+    margin: 0 0 8px;
+}
 .detail-card .remove-btn { color: #ef4444; }
 
 .detail-card .rows {
@@ -512,7 +519,7 @@ svg {
 .overlap-menu .ico .balise  { fill: var(--balise-fill);  stroke: var(--balise-stroke); }
 .overlap-menu .ico .signal  { fill: var(--signal-fill);  stroke: var(--signal-stroke); }
 .overlap-menu .ico .tdscomp { fill: var(--tds-fill);     stroke: var(--tds-stroke); }
-.overlap-menu .ico .node    { fill: var(--node-fill);    stroke: #111827; /* dünner Rand optional */ }
+.overlap-menu .ico .node    { fill: var(--node-fill);    stroke: #111827; }
 .overlap-item .badge {
     padding: 2px 6px;
     border-radius: 9999px;
@@ -524,7 +531,7 @@ svg {
 
 .overlap-item .label {
     color: var(--header3-color);
-    white-space: normal; /* immer sichtbar, darf umbrechen */
+    white-space: normal; 
     overflow: visible;
     text-overflow: clip;
 }
@@ -537,7 +544,7 @@ svg {
 
 
 
-/* === Overlay Layout Overrides (Desktop) === */
+/* === Overlay Layout Overrides === */
 :root {
   --topbar-h: 52px;
   --panel-gap: 12px;
@@ -547,12 +554,11 @@ svg {
   --panel-max-w: 400px;
 }
 
-/* main becomes overlay host; graph/views are absolute */
+/* graph/views are absolute */
 .main {
   position: relative;
-  display: block !important; /* override original grid */
+  display: block !important; 
   min-height: calc(100vh - var(--topbar-h));
-  /* Prevent absolute children (panels, shadows) from causing page scroll */
   overflow: hidden;
 }
 
@@ -583,6 +589,18 @@ svg {
 .leftpanel { left: var(--panel-gap); }
 .rightpanel { right: var(--panel-gap); width: var(--right-w); }
 
+/* Right panel: make inner list the scroller so resizer stays usable */
+.rightpanel {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden; /* prevent panel itself from scrolling */
+}
+
+.rightpanel .detail-list {
+  overflow: auto;   /* scroll only the list */
+  min-height: 0;    /* allow grid child to shrink */
+}
+
 /* collapsed state (moved out and non-interactive) */
 .leftpanel.is-collapsed {
   transform: translateX(calc(-100% - var(--panel-gap)));
@@ -605,6 +623,7 @@ svg {
   place-items: center;
   cursor: col-resize;
   user-select: none;
+  z-index: 2; /* stay above scrollable content */
 }
 .leftpanel .panel-resizer { right: 0; }
 .rightpanel .panel-resizer { left: 0; }
