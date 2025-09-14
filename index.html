@@ -57,18 +57,20 @@
         <label><input id="chk-hide-selected" type="checkbox"> Hide Selected Elements</label>
         <hr>
         <h3>Graph Controls</h3>
-        <button id="btn-center-graph" type="button">Center Graph</button>
+        <button id="btn-center-graph" type="button" class="btn btn-sm">Center Graph</button>
         <div style="margin-top:8px;">                
         <label><input id="chk-flip-x" type="checkbox"> Flip X-Axis</label>
         <label><input id="chk-flip-y" type="checkbox"> Flip Y-Axis</label>
         </div>
         <hr>
         <h3>Search Elements</h3>
-        <div style="display:flex; gap:6px; align-items:center;">
-            <input id="txt-search" type="text" placeholder="ID oder Name" style="flex:1; padding:4px 6px;" />
-            <button id="btn-search" type="button">search</button>
+        <div class="search-group">
+            <input id="txt-search" class="input" type="text" placeholder="ID oder Name" />
+            <div class="btn-row">
+              <button id="btn-search" type="button" class="btn btn-sm">search</button>
+            </div>
+            <div id="search-status" class="search-status" aria-live="polite"></div>
         </div>
-        <div id="search-status" style="min-height:18px; font-size:12px; color:#6b7280; margin-top:4px;"></div>
     </aside>
 
     <section id="located-view" class="view visible" aria-label="Geographische Ansicht"></section>
@@ -77,7 +79,7 @@
     <aside id="rightpanel" class="rightpanel">
         <div class="rightpanel-header">
             <h3>Selected Elements</h3>
-            <button id="btn-clear-selection" title="remove all">remove all</button>
+            <button id="btn-clear-selection" class="btn btn-sm" title="remove all">remove all</button>
         </div>
         <div id="detail-list" class="detail-list" aria-live="polite"></div>
     </aside>

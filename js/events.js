@@ -105,19 +105,34 @@ export default class Events {
         const doSearch = async () => {
             const q = (this.txtSearch?.value || '').trim();
             if (!q) {
-                if (this.elSearchStatus) this.elSearchStatus.textContent = 'Bitte eine ID oder einen Namen eingeben.';
+                if (this.elSearchStatus) {
+                    this.elSearchStatus.textContent = 'Bitte eine ID oder einen Namen eingeben.';
+                    this.elSearchStatus.classList.remove('ok', 'error');
+                }
                 return;
             }
             try {
                 const res = await this.controller.searchAndSelect(q);
                 if (res && res.ok) {
-                    if (this.elSearchStatus) this.elSearchStatus.textContent = `Gefunden: ${res.kind} ${res.id}`;
+                    if (this.elSearchStatus) {
+                        this.elSearchStatus.textContent = `Gefunden: ${res.kind} ${res.id}`;
+                        this.elSearchStatus.classList.remove('error');
+                        this.elSearchStatus.classList.add('ok');
+                    }
                 } else {
                     const msg = res && res.reason ? res.reason : 'Kein Element mit dieser ID oder diesem Namen gefunden.';
-                    if (this.elSearchStatus) this.elSearchStatus.textContent = msg;
+                    if (this.elSearchStatus) {
+                        this.elSearchStatus.textContent = msg;
+                        this.elSearchStatus.classList.remove('ok');
+                        this.elSearchStatus.classList.add('error');
+                    }
                 }
             } catch (e) {
-                if (this.elSearchStatus) this.elSearchStatus.textContent = 'Suche fehlgeschlagen.';
+                if (this.elSearchStatus) {
+                    this.elSearchStatus.textContent = 'Suche fehlgeschlagen.';
+                    this.elSearchStatus.classList.remove('ok');
+                    this.elSearchStatus.classList.add('error');
+                }
             }
         };
         if (this.btnSearch) this.btnSearch.addEventListener('click', doSearch);
@@ -334,7 +349,7 @@ export default class Events {
         <div class="detail-card" data-sel-id="${id}">
             <div class="card-head">
                 <div class="title">${title}</div>
-                <button class="remove-btn" data-remove-id="${id}" title="remove">remove</button>
+                <button class="remove-btn btn btn-sm" data-remove-id="${id}" title="remove"> x </button>
             </div>
             <div class="rows">${rowsHtml}</div>
         </div>`;
@@ -380,7 +395,9 @@ export default class Events {
     const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
     const applyWidths = () => {
-      leftPanel.style.width  = `${clamp(leftW, MIN_W, MAX_W)}px`;
+      // Left panel no longer resizable: rely on CSS var --left-w
+      leftPanel.style.removeProperty('width');
+      // Keep right panel resizable
       rightPanel.style.width = `${clamp(rightW, MIN_W, MAX_W)}px`;
     };
 
@@ -447,7 +464,7 @@ export default class Events {
       });
     };
 
-    makeResizer(leftPanel, 'left');
+    // Left panel fixed width: no resizer
     makeResizer(rightPanel, 'right');
   });
 })();
