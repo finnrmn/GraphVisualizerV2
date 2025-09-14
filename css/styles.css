@@ -17,10 +17,13 @@ button {
 }
 
 :root {
-    --balise-fill: #61acf5;--balise-stroke: #477EAFF4;
-    --signal-fill: #ef476f;--signal-stroke: #782034;
-    --tds-fill: #06d6a0;--tds-stroke: #0d4f3f;
-    --node-fill: #000000;--node-stroke: #111827;
+    --balise-fill: #61acf5; 
+    --balise-stroke: #477EAFF4;
+    --signal-fill: #ef476f; 
+    --signal-stroke: #782034;
+    --tds-fill: #06d6a0; 
+    --tds-stroke: #0d4f3f;
+    --node-fill: #000000; 
     --lines-stroke: #000000;
     --speed-stroke: #24e96c;
     --tds-sec-stroke: #a855f7;
@@ -221,7 +224,10 @@ button {
     stroke-width: 1.5;
 }
 
-
+.edges path.edge.is-selected {
+    stroke: #ef4444;
+    stroke-width: 2.5;
+}
 
 /* New non-breaking highlight/focus aliases */
 .is-highlighted {
@@ -262,18 +268,32 @@ button {
     box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
 }
 
-
+/* Marker-Farben (du kannst das später in UI-Theme auslagern) */
 .elems .balise  { fill: var(--balise-fill);  stroke: var(--balise-stroke); }
 .elems .signal  { fill: var(--signal-fill);  stroke: var(--signal-stroke); }
 .elems .tdscomp { fill: var(--tds-fill);     stroke: var(--tds-stroke); }
-.nodes circle   { fill: var(--node-fill); stroke: var(--node-stroke);}
-.segments .seg-line {stroke: var(--lines-stroke);stroke-width: 1.5px;}
+.nodes circle   { fill: var(--node-fill); }
+.segments .seg-line {
+    stroke: var(--lines-stroke);
+    stroke-width: 1.5px;
+}
 
-.segments .seg-arc {stroke: var(--lines-stroke);stroke-width: 1.5px;fill: none;}
+.segments .seg-arc {
+    stroke: var(--lines-stroke);
+    stroke-width: 1.5px;
+    fill: none;
+}
 
-.overlays .speed {stroke: var(--speed-stroke);stroke-width: 3;}
+.overlays .speed {
+    stroke: var(--speed-stroke);
+    stroke-width: 3;
+}
 
-.overlays .tds {stroke: var(--tds-sec-stroke);stroke-width: 5;stroke-opacity: .35;}
+.overlays .tds {
+    stroke: var(--tds-sec-stroke);
+    stroke-width: 5;
+    stroke-opacity: .35;
+}
 
 svg {
     width: 100%;
@@ -361,7 +381,6 @@ svg {
     flex-direction: column;
     gap: 6px;
     font-size: 14px;
-    color: var(--header3-color);
 }
 
 .startup-overlay input,
@@ -377,7 +396,7 @@ svg {
     margin-top: 8px;
     padding: 8px 12px;
     border-radius: 8px;
-    border: 1px solid #334155;
+    border: 1px solid var(--header3-color);
     background: var(--header3-color);
     color: #e2e8f0;
 }
@@ -385,7 +404,7 @@ svg {
 .start-status {
     min-height: 18px;
     font-size: 12px;
-    color: #64748b;
+    color: var(--header3-color);
 }
 
 .start-status.error {
@@ -456,7 +475,7 @@ svg {
 .overlap-menu .ico .balise  { fill: var(--balise-fill);  stroke: var(--balise-stroke); }
 .overlap-menu .ico .signal  { fill: var(--signal-fill);  stroke: var(--signal-stroke); }
 .overlap-menu .ico .tdscomp { fill: var(--tds-fill);     stroke: var(--tds-stroke); }
-.overlap-menu .ico .node    { fill: var(--node-fill);    stroke: var(--node-stroke); }
+.overlap-menu .ico .node    { fill: var(--node-fill);    stroke: #111827; /* dünner Rand optional */ }
 .overlap-item .badge {
     padding: 2px 6px;
     border-radius: 9999px;
@@ -467,7 +486,7 @@ svg {
 }
 
 .overlap-item .label {
-    color: #111827;
+    color: var(--header3-color);
     white-space: normal; /* immer sichtbar, darf umbrechen */
     overflow: visible;
     text-overflow: clip;
@@ -479,3 +498,120 @@ svg {
     margin-left: 8px;
 }
 
+
+
+/* === Overlay Layout Overrides (Desktop) === */
+:root {
+  --topbar-h: 52px;
+  --panel-gap: 12px;
+  --left-w: 320px;
+  --right-w: 360px;
+  --panel-min-w: 240px;
+  --panel-max-w: 400px;
+}
+
+/* main becomes overlay host; graph/views are absolute */
+.main {
+  position: relative;
+  display: block !important; /* override original grid */
+  min-height: calc(100vh - var(--topbar-h));
+}
+
+/* views fill the main area beneath the header */
+.view {
+  position: absolute !important;
+  inset: 0 !important;
+}
+
+/* overlay panels (on top of graph) */
+.leftpanel, .rightpanel {
+  position: absolute !important;
+  top: var(--panel-gap);
+  bottom: var(--panel-gap);
+  z-index: 15;
+  overflow: auto;
+  width: var(--left-w);
+  background: rgba(255,255,255,0.95);
+  -webkit-backdrop-filter: saturate(1.2) blur(4px);
+  backdrop-filter: saturate(1.2) blur(4px);
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(2,6,23,0.12);
+  transition: transform .22s ease, opacity .22s ease;
+  padding: 12px;
+}
+
+.leftpanel { left: var(--panel-gap); }
+.rightpanel { right: var(--panel-gap); width: var(--right-w); }
+
+/* collapsed state (moved out and non-interactive) */
+.leftpanel.is-collapsed {
+  transform: translateX(calc(-100% - var(--panel-gap)));
+  pointer-events: none;
+  opacity: 0;
+}
+.rightpanel.is-collapsed {
+  transform: translateX(calc(100% + var(--panel-gap)));
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* resizer handle (inside panel at inner edge) */
+.panel-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  display: grid;
+  place-items: center;
+  cursor: col-resize;
+  user-select: none;
+}
+.leftpanel .panel-resizer { right: 0; }
+.rightpanel .panel-resizer { left: 0; }
+.panel-resizer .grip {
+  width: 2px;
+  height: 40px;
+  border-radius: 2px;
+  background: #94a3b8;
+  opacity: .7;
+}
+.panel-resizer:hover .grip { opacity: 1; }
+
+/* bottom-center dock */
+.dock-bottom-center {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: rgba(255,255,255,0.90);
+  -webkit-backdrop-filter: saturate(1.2) blur(6px);
+  backdrop-filter: saturate(1.2) blur(6px);
+  box-shadow: 0 12px 30px rgba(2,6,23,0.15);
+}
+
+.dock-btn {
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(2,6,23,0.06);
+}
+.dock-btn:hover { background: #f8fafc; }
+.dock-btn.active {
+  background: var(--header3-color);
+  color: #fff;
+  border-color: var(--header3-color);
+}
+
+/* reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .leftpanel, .rightpanel { transition: none !important; }
+}

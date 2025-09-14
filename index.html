@@ -33,7 +33,7 @@
 </header>
 
 <main class="main" style="display:none;">
-    <aside class="leftpanel">
+    <aside id="leftpanel" class="leftpanel">
         <h3>Element Visibility</h3>
         <label><input id="chk-balises" type="checkbox" checked> Balises</label>
         <label><input id="chk-signals" type="checkbox" checked> Signals</label>
@@ -74,7 +74,7 @@
     <section id="located-view" class="view visible" aria-label="Geographische Ansicht"></section>
     <section id="dynamic-view" class="view" aria-label="Topologische Ansicht"></section>
 
-    <aside class="rightpanel">
+    <aside id="rightpanel" class="rightpanel">
         <div class="rightpanel-header">
             <h3>Selected Elements</h3>
             <button id="btn-clear-selection" title="remove all">remove all</button>
@@ -84,6 +84,17 @@
 
     <!-- Tooltip -->
     <div id="tooltip" class="tooltip" hidden></div>
+
+    <!-- Bottom-center Dock for Panels -->
+    <div id="bottom-dock" class="dock-bottom-center" role="toolbar" aria-label="Panels">
+      <button id="dock-controls" class="dock-btn" aria-controls="leftpanel" aria-expanded="true" title="Controls">
+        <span class="icon" aria-hidden="true">⚙️</span>
+      </button>
+      <button id="dock-selection" class="dock-btn" aria-controls="rightpanel" aria-expanded="true" title="Selection">
+        <span class="icon" aria-hidden="true">🧩</span>
+      </button>
+    </div>
+
 
 </main>
 

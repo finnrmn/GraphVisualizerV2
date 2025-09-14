@@ -340,3 +340,114 @@ export default class Events {
         </div>`;
     }
 }
+
+
+// === Overlay Panels & Bottom Dock initializer (no hotkeys) ===
+(() => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  const onReady = (fn) => {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', fn, { once: true });
+    } else {
+      fn();
+    }
+  };
+
+  onReady(() => {
+    const leftPanel  = document.getElementById('leftpanel')  || document.querySelector('.leftpanel');
+    const rightPanel = document.getElementById('rightpanel') || document.querySelector('.rightpanel');
+    const dockControls  = document.getElementById('dock-controls');
+    const dockSelection = document.getElementById('dock-selection');
+
+    if (!leftPanel || !rightPanel || !dockControls || !dockSelection) {
+      // Not the target page or markup missing; abort silently
+      return;
+    }
+
+    // State + persistence
+    const LS = {
+      get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+      set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+    };
+
+    const MIN_W = 240, MAX_W = 450;
+    let leftW  = LS.get('ui_left_w',  320);
+    let rightW = LS.get('ui_right_w', 360);
+    let leftOpen  = LS.get('ui_left_open',  true);
+    let rightOpen = LS.get('ui_right_open', true);
+
+    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+    const applyWidths = () => {
+      leftPanel.style.width  = `${clamp(leftW, MIN_W, MAX_W)}px`;
+      rightPanel.style.width = `${clamp(rightW, MIN_W, MAX_W)}px`;
+    };
+
+    const setOpen = (side, open) => {
+      const panel = side === 'left' ? leftPanel : rightPanel;
+      const btn   = side === 'left' ? dockControls : dockSelection;
+      panel.classList.toggle('is-collapsed', !open);
+      btn.classList.toggle('active', open);
+      btn.setAttribute('aria-expanded', String(open));
+      if (side === 'left') { leftOpen = open; LS.set('ui_left_open', open); }
+      else { rightOpen = open; LS.set('ui_right_open', open); }
+    };
+
+    // Initial apply
+    applyWidths();
+    setOpen('left',  !!leftOpen);
+    setOpen('right', !!rightOpen);
+
+    // Dock button wiring
+    dockControls.addEventListener('click', () => setOpen('left',  !leftOpen));
+    dockSelection.addEventListener('click', () => setOpen('right', !rightOpen));
+
+    // Build resizers
+    const makeResizer = (panel, side) => {
+      const res = document.createElement('div');
+      res.className = 'panel-resizer';
+      const grip = document.createElement('div');
+      grip.className = 'grip';
+      res.appendChild(grip);
+      panel.appendChild(res);
+
+      let drag = null;
+      let raf = null;
+      const onDown = (ev) => {
+        ev.preventDefault();
+        drag = { startX: ev.clientX, startW: panel.getBoundingClientRect().width };
+        window.addEventListener('pointermove', onMove, { passive: true });
+        window.addEventListener('pointerup', onUp, { once: true });
+      };
+      const onMove = (ev) => {
+        if (!drag) return;
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = null;
+          const dx = ev.clientX - drag.startX;
+          const next = side === 'left' ? clamp(drag.startW + dx, MIN_W, MAX_W)
+                                       : clamp(drag.startW - dx, MIN_W, MAX_W);
+          if (side === 'left') { leftW = next; LS.set('ui_left_w', next); }
+          else { rightW = next; LS.set('ui_right_w', next); }
+          panel.style.width = `${next}px`;
+        });
+      };
+      const onUp = () => {
+        drag = null;
+        window.removeEventListener('pointermove', onMove);
+      };
+
+      res.addEventListener('pointerdown', onDown);
+      res.addEventListener('dblclick', () => {
+        const def = side === 'left' ? 320 : 360;
+        if (side === 'left') { leftW = def; LS.set('ui_left_w', def); }
+        else { rightW = def; LS.set('ui_right_w', def); }
+        panel.style.width = `${def}px`;
+      });
+    };
+
+    makeResizer(leftPanel, 'left');
+    makeResizer(rightPanel, 'right');
+  });
+})();
