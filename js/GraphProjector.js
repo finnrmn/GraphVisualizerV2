@@ -130,9 +130,10 @@ export default class GraphProjector {
                 const ik = _num(s.intrinsicAB ?? s.intrinsicRef ?? s.ikAB);
                 const p = Number.isFinite(ik) ? this.store.projectIntrinsicToXY(edge.id, ik) : null;
                 if (!p) continue;
+                const resolvedName = this._resolvePrimaryName(s);
                 elements.signals.push({
                     id: (s.id || `${edge.id}:${(ik ?? 0).toFixed(5)}`),
-                    name: s.name || s.dbName || null,
+                    name: resolvedName,
                     edgeId: edge.id,
                     kind: s.kind || null,
                     ikAB: ik,
@@ -307,6 +308,38 @@ export default class GraphProjector {
             sum += Math.hypot(b.x - a.x, b.y - a.y);
         }
         return sum || null;
+    }
+
+    _resolvePrimaryName(obj) {
+        const reduce = (value) => {
+            if (value == null) return null;
+            if (typeof value === 'string') {
+                const t = value.trim();
+                return t.length ? t : null;
+            }
+            if (Array.isArray(value)) {
+                for (const entry of value) {
+                    const resolved = reduce(entry?.name ?? entry?.label ?? entry?.value ?? entry);
+                    if (resolved) return resolved;
+                }
+                return null;
+            }
+            if (typeof value === 'object') {
+                return reduce(value.name ?? value.label ?? value.value ?? value.text ?? null);
+            }
+            return null;
+        };
+
+        if (!obj) return null;
+        const candidates = [obj.name, obj.dbName, obj.label, obj.displayName];
+        if (obj.raw) {
+            candidates.push(obj.raw.name, obj.raw.label);
+        }
+        for (const cand of candidates) {
+            const resolved = reduce(cand);
+            if (resolved) return resolved;
+        }
+        return null;
     }
 
     _computeBBox(nodes, geo_edges) {
