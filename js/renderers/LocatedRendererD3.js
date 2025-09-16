@@ -1,6 +1,6 @@
 import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm';
 import {isHighlighted, selectionKeyForDatum} from '../utils/highlight.js';
-import {iconSvg, appendIconG, ensureArrowMarker} from '../utils/icons.js';
+import {iconSvg, appendIconG, ensureArrowMarker} from '../utils/graphSymbols.js';
 
 export default class LocatedRendererD3 {
     constructor({mount, onSelect} = {}) {

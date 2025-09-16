@@ -1,5 +1,5 @@
 import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm';
-import {appendIconG} from '../utils/icons.js';
+import {appendIconG} from '../utils/graphSymbols.js';
 
 export default class DynamicRendererD3 {
     constructor({mount, onSelect} = {}) {

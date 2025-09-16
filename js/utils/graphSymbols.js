@@ -14,8 +14,7 @@ export function iconSpec(kind) {
     case 'node':
       return { tag: 'circle', attrs: { class: 'node', cx: 0, cy: 0, r: 3 }, viewBox: '-7 -7 14 14' };
     case 'arrow':
-      // Standalone icon (not the marker). Kept simple and centered.
-      return { tag: 'path', attrs: { class: 'arrow', d: 'M -7 -2 L 3 -2 L 3 -5 L 7 0 L 3 5 L 3 2 L -7 2 Z' }, viewBox: '-8 -8 16 16' };
+      return { tag: 'path', attrs: { class: 'arrow', d: 'M -7 -5 L 7 0 L -7 5', fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, viewBox: '-8 -8 16 16' };
     default:
       return { tag: 'circle', attrs: { cx: 0, cy: 0, r: 2 }, viewBox: '-7 -7 14 14' };
   }
