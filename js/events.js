@@ -15,6 +15,7 @@ export default class Events {
         this._applyInitialState();
         this._initResizeObserver();
         this._bindBus();
+        this._setupDetailOverlay();
     }
 
     _cacheEls() {
@@ -226,6 +227,11 @@ export default class Events {
                 const btn = ev.target.closest('.remove-btn');
                 if (btn && btn.dataset && btn.dataset.removeId) {
                     this.controller.removeFromSelection(btn.dataset.removeId);
+                    return;
+                }
+                const detailBtn = ev.target.closest('.detail-btn');
+                if (detailBtn && detailBtn.dataset && detailBtn.dataset.detailId) {
+                    this._openDetailOverlay(detailBtn.dataset.detailId);
                 }
             });
         }
@@ -289,12 +295,15 @@ export default class Events {
             return null;
         };
 
+        this._detailPayloads = new Map();
         const htmlCards = [];
         const ordered = sel.slice().reverse(); // newest on top
         for (const id of ordered) {
             let type = null;
             let title = '';
             const rows = [];
+            let detailPayload = null;
+            let displayName = '';
 
             // Try element first
             const el = findElemById(id);
@@ -346,6 +355,7 @@ export default class Events {
 
                 const titleLabel = label || id || '';
                 title = `${type}${titleLabel ? ` – ${titleLabel}` : ''}`;
+                displayName = titleLabel;
 
                 pushRow(rows, 'ID', id, {force: true});
                 pushRow(rows, 'Name', label ?? detail?.name ?? null, {force: true});
@@ -383,6 +393,9 @@ export default class Events {
                     if (appDir) pushRow(rows, 'Application Dir', appDir);
                     if (Number.isFinite(detail?.pos)) pushRow(rows, 'Position [m]', String(Math.round(detail.pos)));
                 }
+
+                if (detail && typeof detail === 'object') detailPayload = detail.raw || detail;
+                if (!detailPayload && detail && typeof detail === 'object') detailPayload = detail;
             } else if (typeof id === 'string' && id.includes(':')) {
                 // Segment selection: id format edgeId:index
                 const edgeId = id.split(':')[0];
@@ -402,6 +415,8 @@ export default class Events {
                     }
                     // Edge basics
                     this._pushEdgeBasics(rows, edgeId, { labelKey: 'Edge Name' });
+                    type = 'Segment';
+                    displayName = seg.kind === 'arc' ? 'Arc' : 'Line';
                 } else {
                     // Fallback if no seg found
                     title = `Item – ${id}`;
@@ -416,6 +431,9 @@ export default class Events {
                     title = `Edge${label ? ` – ${label}` : ''}`;
                     rows.push(['ID', id]);
                     this._pushEdgeBasics(rows, id);
+                    const edgeObj = this.controller.store.getEdge(id);
+                    detailPayload = edgeObj?.raw || edgeObj || null;
+                    displayName = label || id || '';
                 } else {
                     // Fallback as generic item
                     type = 'Item';
@@ -424,10 +442,23 @@ export default class Events {
                 }
             }
 
-            htmlCards.push(this._renderCardHtml(id, title, rows));
+            if (detailPayload && typeof detailPayload === 'object') {
+                this._detailPayloads.set(id, {
+                    id,
+                    type: type || 'Item',
+                    name: displayName || null,
+                    raw: detailPayload
+                });
+            }
+
+            htmlCards.push(this._renderCardHtml(id, title, rows, {hasDetails: this._detailPayloads.has(id)}));
         }
 
         this.elDetailList.innerHTML = htmlCards.join('');
+
+        if (this._detailOverlayActiveId && !this._detailPayloads.has(this._detailOverlayActiveId)) {
+            this._closeDetailOverlay();
+        }
     }
 
     _pushEdgeBasics(rows, edgeId, opts = {}) {
@@ -448,16 +479,125 @@ export default class Events {
         } catch {}
     }
 
-    _renderCardHtml(id, title, rows) {
+    _renderCardHtml(id, title, rows, opts = {}) {
+        const hasDetails = !!opts.hasDetails;
         const rowsHtml = rows.map(([k, v]) => `<div class="key">${k}</div><div class="val">${String(v)}</div>`).join('');
         return `
         <div class="detail-card" data-sel-id="${id}">
             <div class="card-head">
                 <div class="title">${title}</div>
-                <button class="remove-btn btn btn-sm" data-remove-id="${id}" title="remove"> x </button>
+                <div class="actions">
+                    ${hasDetails ? `<button class="detail-btn btn btn-sm" data-detail-id="${id}" title="Details ansehen">details</button>` : ''}
+                    <button class="remove-btn btn btn-sm" data-remove-id="${id}" title="remove"> x </button>
+                </div>
             </div>
             <div class="rows">${rowsHtml}</div>
         </div>`;
+    }
+
+    _setupDetailOverlay() {
+        if (this._detailOverlayRoot) return;
+        const root = document.createElement('div');
+        root.className = 'detail-overlay hidden';
+        root.setAttribute('aria-hidden', 'true');
+
+        const backdrop = document.createElement('div');
+        backdrop.className = 'detail-overlay__backdrop';
+        root.appendChild(backdrop);
+
+        const panel = document.createElement('div');
+        panel.className = 'detail-overlay__panel';
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-modal', 'true');
+        root.appendChild(panel);
+
+        const header = document.createElement('div');
+        header.className = 'detail-overlay__header';
+        panel.appendChild(header);
+
+        const meta = document.createElement('div');
+        meta.className = 'detail-overlay__meta';
+        header.appendChild(meta);
+
+        const typeEl = document.createElement('div');
+        typeEl.className = 'detail-overlay__type';
+        meta.appendChild(typeEl);
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'detail-overlay__name';
+        meta.appendChild(nameEl);
+
+        const idEl = document.createElement('div');
+        idEl.className = 'detail-overlay__id';
+        meta.appendChild(idEl);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'detail-overlay__close btn btn-sm';
+        closeBtn.type = 'button';
+        closeBtn.textContent = 'close';
+        header.appendChild(closeBtn);
+
+        const body = document.createElement('div');
+        body.className = 'detail-overlay__body';
+        panel.appendChild(body);
+
+        const pre = document.createElement('pre');
+        pre.className = 'detail-overlay__pre';
+        body.appendChild(pre);
+
+        document.body.appendChild(root);
+        this._detailOverlayRoot = root;
+        this._detailOverlayEls = {typeEl, nameEl, idEl, pre, closeBtn, panel};
+
+        backdrop.addEventListener('click', () => this._closeDetailOverlay());
+        closeBtn.addEventListener('click', () => this._closeDetailOverlay());
+    }
+
+    _openDetailOverlay(selId) {
+        if (!this._detailOverlayRoot || !this._detailPayloads) return;
+        const entry = this._detailPayloads.get(selId);
+        if (!entry) return;
+        const {type, name, raw, id} = entry;
+        const json = (() => {
+            try {
+                return JSON.stringify(raw, null, 2);
+            } catch (err) {
+                return String(err || 'Unable to stringify payload');
+            }
+        })();
+
+        this._detailOverlayEls.typeEl.textContent = type || 'Item';
+        this._detailOverlayEls.nameEl.textContent = name ? String(name) : '';
+        this._detailOverlayEls.idEl.textContent = id ? `ID: ${id}` : '';
+        this._detailOverlayEls.pre.textContent = json;
+
+        this._detailOverlayRoot.classList.remove('hidden');
+        this._detailOverlayRoot.setAttribute('aria-hidden', 'false');
+        this._detailOverlayEls.closeBtn.focus();
+        this._detailOverlayActiveId = id;
+
+        if (!this._detailOverlayKeyHandler) {
+            this._detailOverlayKeyHandler = (ev) => {
+                if (ev.key === 'Escape') this._closeDetailOverlay();
+            };
+        }
+        document.addEventListener('keydown', this._detailOverlayKeyHandler);
+        this._overlayScrollRestore = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+    }
+
+    _closeDetailOverlay() {
+        if (!this._detailOverlayRoot) return;
+        this._detailOverlayRoot.classList.add('hidden');
+        this._detailOverlayRoot.setAttribute('aria-hidden', 'true');
+        this._detailOverlayActiveId = null;
+        if (this._detailOverlayKeyHandler) {
+            document.removeEventListener('keydown', this._detailOverlayKeyHandler);
+        }
+        if (this._overlayScrollRestore !== undefined) {
+            document.body.style.overflow = this._overlayScrollRestore;
+            this._overlayScrollRestore = undefined;
+        }
     }
 }
 
