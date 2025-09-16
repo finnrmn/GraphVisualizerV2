@@ -251,6 +251,44 @@ export default class Events {
             tdc.find(e => e.id === id)
         );
 
+        const store = this.controller.store;
+        const pushRow = (rows, key, value, {force = false} = {}) => {
+            const hasValue = !(value === undefined || value === null || value === '');
+            if (!hasValue && !force) return;
+            rows.push([key, hasValue ? String(value) : '—']);
+        };
+
+        const findElementDetail = (group, edgeId, elemId, approxIk) => {
+            if (!store || !edgeId) return null;
+            let list = [];
+            if (group === 'balise') list = store.getBalisesByEdge(edgeId) || [];
+            else if (group === 'signal') list = store.getSignalsByEdge(edgeId) || [];
+            else if (group === 'tds') list = store.getTdsComponentsByEdge(edgeId) || [];
+            if (!list.length) return null;
+            if (elemId) {
+                const byId = list.find(item => item && item.id === elemId);
+                if (byId) return byId;
+            }
+            if (Number.isFinite(approxIk)) {
+                const epsilon = 1e-4;
+                const exact = list.find(item => Number.isFinite(item?.intrinsicAB) && Math.abs(item.intrinsicAB - approxIk) <= epsilon);
+                if (exact) return exact;
+                let best = null;
+                let bestDelta = Infinity;
+                for (const item of list) {
+                    const t = Number(item?.intrinsicAB);
+                    if (!Number.isFinite(t)) continue;
+                    const delta = Math.abs(t - approxIk);
+                    if (delta < bestDelta) {
+                        bestDelta = delta;
+                        best = item;
+                    }
+                }
+                if (best && bestDelta <= 1e-2) return best;
+            }
+            return null;
+        };
+
         const htmlCards = [];
         const ordered = sel.slice().reverse(); // newest on top
         for (const id of ordered) {
@@ -261,23 +299,90 @@ export default class Events {
             // Try element first
             const el = findElemById(id);
             if (el) {
-                if (bal.includes(el)) type = 'Balise';
-                else if (sig.includes(el)) type = 'Signal';
-                else if (tdc.includes(el)) type = 'TDS-Component';
+                let detail = null;
+                let edgeId = el.edgeId ?? null;
+                let label = el.name || el.label || null;
+                let approxIk = Number.isFinite(el.ikAB) ? el.ikAB : null;
+                let edgeLength = null;
+                if (store && edgeId) {
+                    const len = store.getEdgeLength(edgeId);
+                    if (Number.isFinite(len)) edgeLength = len;
+                }
+                if (!Number.isFinite(approxIk) && Number.isFinite(el.distanceFromA) && Number.isFinite(edgeLength) && edgeLength > 0) {
+                    approxIk = el.distanceFromA / edgeLength;
+                }
 
-                const edgeId = el.edgeId ?? null;
-                const label = el.name || el.label || null;
-                title = `${type}${label ? ` – ${label}` : ''}`;
-                if (id) rows.push(['ID', id]);
-                if (label) rows.push(['Name', label]);
-                if (edgeId) rows.push(['Edge', edgeId]);
-                if (isLocated && Number.isFinite(el.ikAB)) rows.push(['IK (A→B)', String(el.ikAB)]);
-                if (!isLocated && Number.isFinite(el.distanceFromA)) rows.push(['Dist. from A [m]', String(Math.round(el.distanceFromA))]);
-                if (el.kind) rows.push(['Kind', el.kind]);
-                if (el.type) rows.push(['Type', el.type]);
+                if (bal.includes(el)) {
+                    type = 'Balise';
+                    detail = findElementDetail('balise', edgeId, id, approxIk);
+                } else if (sig.includes(el)) {
+                    type = 'Signal';
+                    detail = findElementDetail('signal', edgeId, id, approxIk);
+                } else if (tdc.includes(el)) {
+                    type = 'TDS-Component';
+                    detail = findElementDetail('tds', edgeId, id, approxIk);
+                }
 
-                // Enrich with edge details
-                if (edgeId) this._pushEdgeBasics(rows, edgeId, { labelKey: 'Edge Name' });
+                if (!label) label = detail?.name || detail?.label || null;
+                if (!edgeId) {
+                    edgeId = detail?.netElementRef || null;
+                    if (store && edgeId) {
+                        const len = store.getEdgeLength(edgeId);
+                        if (Number.isFinite(len)) edgeLength = len;
+                    }
+                }
+                if (!Number.isFinite(approxIk) && Number.isFinite(detail?.intrinsicAB)) {
+                    approxIk = detail.intrinsicAB;
+                }
+                if (!Number.isFinite(edgeLength) && store && edgeId) {
+                    const len = store.getEdgeLength(edgeId);
+                    if (Number.isFinite(len)) edgeLength = len;
+                }
+                let distanceFromA = Number.isFinite(el.distanceFromA) ? el.distanceFromA : null;
+                if (!Number.isFinite(distanceFromA) && Number.isFinite(detail?.pos)) distanceFromA = detail.pos;
+                if (!Number.isFinite(distanceFromA) && Number.isFinite(approxIk) && Number.isFinite(edgeLength)) {
+                    distanceFromA = approxIk * edgeLength;
+                }
+
+                const titleLabel = label || id || '';
+                title = `${type}${titleLabel ? ` – ${titleLabel}` : ''}`;
+
+                pushRow(rows, 'ID', id, {force: true});
+                pushRow(rows, 'Name', label ?? detail?.name ?? null, {force: true});
+                pushRow(rows, 'Edge', edgeId, {force: true});
+
+                if (edgeId) {
+                    this._pushEdgeBasics(rows, edgeId, { labelKey: 'Edge Name' });
+                    if (!rows.some(([k]) => k === 'Edge Name')) pushRow(rows, 'Edge Name', null, {force: true});
+                } else {
+                    pushRow(rows, 'Edge Name', null, {force: true});
+                }
+
+                if (Number.isFinite(approxIk)) pushRow(rows, 'IK (A→B)', Number(approxIk).toFixed(5), {force: true});
+                else pushRow(rows, 'IK (A→B)', null, {force: true});
+
+                if (Number.isFinite(distanceFromA)) pushRow(rows, 'Dist. from A [m]', String(Math.round(distanceFromA)));
+
+                const intrinsicRefVal = Number.isFinite(detail?.intrinsicRef) ? Number(detail.intrinsicRef).toFixed(5) : null;
+
+                if (type === 'Balise') {
+                    const appDir = detail?.applicationDirection ?? el.applicationDirection ?? null;
+                    pushRow(rows, 'Application Dir', appDir);
+                    pushRow(rows, 'Intrinsic (Ref)', intrinsicRefVal);
+                } else if (type === 'Signal') {
+                    const kindVal = el.kind ?? detail?.kind ?? detail?.raw?.kind ?? null;
+                    if (kindVal) pushRow(rows, 'Kind', kindVal);
+                    pushRow(rows, 'Intrinsic (Ref)', intrinsicRefVal);
+                    const appDir = detail?.applicationDirection ?? detail?.raw?.applicationDirection ?? null;
+                    if (appDir) pushRow(rows, 'Application Dir', appDir);
+                } else if (type === 'TDS-Component') {
+                    const typeVal = el.type ?? detail?.componentType ?? null;
+                    if (typeVal) pushRow(rows, 'Type', typeVal);
+                    pushRow(rows, 'Intrinsic (Ref)', intrinsicRefVal);
+                    const appDir = detail?.applicationDirection ?? null;
+                    if (appDir) pushRow(rows, 'Application Dir', appDir);
+                    if (Number.isFinite(detail?.pos)) pushRow(rows, 'Position [m]', String(Math.round(detail.pos)));
+                }
             } else if (typeof id === 'string' && id.includes(':')) {
                 // Segment selection: id format edgeId:index
                 const edgeId = id.split(':')[0];
