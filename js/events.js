@@ -417,11 +417,42 @@ export default class Events {
                     this._pushEdgeBasics(rows, edgeId, { labelKey: 'Edge Name' });
                     type = 'Segment';
                     displayName = seg.kind === 'arc' ? 'Arc' : 'Line';
+                    detailPayload = {...seg, edgeId};
                 } else {
                     // Fallback if no seg found
                     title = `Item – ${id}`;
                     rows.push(['ID', id]);
                 }
+            } else if (store?.getNode && store.getNode(id)) {
+                const node = store.getNode(id);
+                type = 'Node';
+                const label = node?.s_name || node?.name || null;
+                title = `Node${label ? ` – ${label}` : ''}`;
+                displayName = label || id || '';
+
+                pushRow(rows, 'ID', id, {force: true});
+                pushRow(rows, 'Name', label, {force: true});
+
+                const xy = store.getNodeXY?.(id) || node?.geoCo || null;
+                if (xy && Number.isFinite(xy.x) && Number.isFinite(xy.y)) {
+                    pushRow(rows, 'Coordinates (x,y)', `${Math.round(xy.x)}, ${Math.round(xy.y)}`);
+                }
+
+                const edgesForNode = Array.isArray(store.getEdgesByNode?.(id)) ? store.getEdgesByNode(id) : [];
+                if (edgesForNode.length) {
+                    const edgeSummaries = edgesForNode.map((edgeRef) => {
+                        const edgeId = edgeRef?.id ?? edgeRef;
+                        const edgeName = store.getEdgeLabel?.(edgeId);
+                        return edgeName ? `${edgeId} (${edgeName})` : String(edgeId);
+                    });
+                    const truncated = edgeSummaries.slice(0, 5).join(', ');
+                    pushRow(rows, 'Edges', truncated);
+                    if (edgeSummaries.length > 5) {
+                        pushRow(rows, 'Edges (total)', String(edgeSummaries.length));
+                    }
+                }
+
+                detailPayload = node?.raw || node || null;
             } else {
                 // Edge card
                 const e = findEdgeById(id);
