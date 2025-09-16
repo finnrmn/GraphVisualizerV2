@@ -191,9 +191,10 @@ export default class LocatedRendererD3 {
         const showAnyLabel = showNames || showIds;
 
 
-        // Click priority: when edges are visible, disable segment clicks; when edges off and segments on, enable segment clicks
-        this.gEdges.style("pointer-events", showEdges ? "auto" : "none");
-        this.gSegments.style("pointer-events", showEdges ? "none" : (showSegments ? "auto" : "none"));
+        // Prefer segment hits (lines/arcs) once they are visible; otherwise fall back to whole-edge clicks.
+        const allowSegmentHits = showSegments;
+        this.gEdges.style('pointer-events', (showEdges && !allowSegmentHits) ? 'auto' : 'none');
+        this.gSegments.style('pointer-events', allowSegmentHits ? 'auto' : 'none');
 
         // Datenquelle
         const allSegsRaw = Array.isArray(view.geo_segments) ? view.geo_segments : [];
@@ -245,19 +246,21 @@ export default class LocatedRendererD3 {
         const lineSel = this.gSegLines.selectAll("line.seg-line")
             .data(segsToDraw.filter(s => s.kind === "line"), d => d.id);
         lineSel.exit().remove();
-        lineSel.enter().append("line").attr("class", "seg-line")
+        const segLineMerged = lineSel.enter().append("line").attr("class", "seg-line")
             .merge(lineSel)
             .attr("x1", d => d.x1).attr("y1", d => d.y1)
             .attr("x2", d => d.x2).attr("y2", d => d.y2)
             .attr("marker-end", arrowOnSegments ? "url(#mk-arrow)" : null)
-            .on('click', (ev, d) => this.onSelect([d.id]))
-            .style('display', d => (showSegments && !(hideSelected && selSet.has(d.id))) ? null : 'none');
+            .on('click', (ev, d) => this.onSelect([d.id]));
+        segLineMerged.style('display', d => (showSegments && !(hideSelected && selSet.has(d.id))) ? null : 'none');
+        applySelHighlight(segLineMerged);
+        segLineMerged.filter(d => isHighlighted(d, selSet)).raise();
 
         // Arcs als SVG-Arc-Path (M… A rx ry 0 laf sf x y)
         const arcSel = this.gSegArcs.selectAll("path.seg-arc")
             .data(segsToDraw.filter(s => s.kind === "arc"), d => d.id);
         arcSel.exit().remove();
-        arcSel.enter().append("path").attr("class", "seg-arc")
+        const segArcMerged = arcSel.enter().append("path").attr("class", "seg-arc")
             .merge(arcSel)
             .attr("d", d => {
                 // Winkeldifferenz normalisieren
@@ -270,8 +273,10 @@ export default class LocatedRendererD3 {
             })
             .attr("fill", "none")
             .attr("marker-end", arrowOnSegments ? "url(#mk-arrow)" : null)
-            .on('click', (ev, d) => this.onSelect([d.id]))
-            .style('display', d => (showSegments && !(hideSelected && selSet.has(d.id))) ? null : 'none');
+            .on('click', (ev, d) => this.onSelect([d.id]));
+        segArcMerged.style('display', d => (showSegments && !(hideSelected && selSet.has(d.id))) ? null : 'none');
+        applySelHighlight(segArcMerged);
+        segArcMerged.filter(d => isHighlighted(d, selSet)).raise();
 
         // --- Nodes (transformiert) ---
         const nodesRaw = Array.isArray(view.nodes) ? view.nodes.map(transform) : [];
@@ -514,6 +519,8 @@ export default class LocatedRendererD3 {
         // ensure highlights persist
         reapplyHighlights = () => {
             applySelHighlight(eMerged);
+            applySelHighlight(segLineMerged);
+            applySelHighlight(segArcMerged);
             applySelHighlight(nMerged);
             applySelHighlight(balMerged);
             applySelHighlight(sigMerged);
