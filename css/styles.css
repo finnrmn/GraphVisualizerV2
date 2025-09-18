@@ -371,3 +371,12 @@ svg marker#mk-arrow path {
 @media (prefers-reduced-motion: reduce){
   .leftpanel, .rightpanel{ transition: none !important; }
 }
+.node.is-pinned {
+    stroke: red;
+}
+
+.node.is-pinned circle,
+.node.is-pinned rect,
+.node.is-pinned path {
+    stroke: red;
+}

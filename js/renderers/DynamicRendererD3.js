@@ -8,6 +8,8 @@ const BBOX_MARGIN = 200;
 const NODE_ICON_SCALE = (5 / 3).toFixed(6);
 const SIGNAL_ICON_SCALE = (6 / 10).toFixed(6);
 const TDS_ICON_SCALE = (5 / 7).toFixed(6);
+const DRAG_PROPAGATION_FALLOFF = 0.65;
+const MAX_PROPAGATION_DEPTH = 6;
 
 function clamp01(value) {
     if (!Number.isFinite(value)) return 0;
@@ -19,6 +21,36 @@ function clamp01(value) {
 function resolveNodeId(ref) {
     if (ref && typeof ref === 'object') return ref.id ?? null;
     return ref ?? null;
+}
+
+function computeBBox(nodes) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const n of nodes) {
+        if (!n) continue;
+        if (n.x < minX) minX = n.x;
+        if (n.x > maxX) maxX = n.x;
+        if (n.y < minY) minY = n.y;
+        if (n.y > maxY) maxY = n.y;
+    }
+    if (!Number.isFinite(minX)) {
+        return {
+            min: {x: -100, y: -100},
+            max: {x: 100, y: 100},
+            width: 200,
+            height: 200
+        };
+    }
+    const min = {x: minX - BBOX_MARGIN, y: minY - BBOX_MARGIN};
+    const max = {x: maxX + BBOX_MARGIN, y: maxY + BBOX_MARGIN};
+    return {
+        min,
+        max,
+        width: max.x - min.x,
+        height: max.y - min.y
+    };
 }
 
 export default class DynamicRendererD3 {
@@ -41,13 +73,65 @@ export default class DynamicRendererD3 {
 
         this._nodeById = new Map();
         this._edgeById = new Map();
-        this._placeOnEdge = () => ({x: 0, y: 0});
+        this._pinned = new Map();
+        this._currentLayout = null;
+        this._currentView = null;
+        this._currentState = null;
+        this._dragPrev = null;
 
         this.svg.attr('viewBox', '0 0 1000 600').attr('preserveAspectRatio', 'xMidYMid meet');
         this.zoom = d3.zoom().scaleExtent([0.1, 16]).on('zoom', (ev) => this.root.attr('transform', ev.transform));
         this.svg.call(this.zoom);
         this._didFit = false;
+
+        this._dragBehavior = d3.drag()
+            .subject((event, d) => ({x: d.x, y: d.y}))
+            .on('start', (event, d) => this._onDragStart(event, d))
+            .on('drag', (event, d) => this._onDrag(event, d))
+            .on('end', (event, d) => this._onDragEnd(event, d));
     }
+
+    _cleanupPinned(view) {
+        if (!this._pinned.size) return;
+        const validIds = new Set((view?.nodes || []).map((n) => n?.id).filter((id) => id != null));
+        for (const id of [...this._pinned.keys()]) {
+            if (!validIds.has(id)) {
+                this._pinned.delete(id);
+            }
+        }
+    }
+
+    _cloneState(state) {
+        if (!state) return {};
+        return {
+            ...state,
+            filters: {...(state.filters || {})},
+            selection: Array.isArray(state.selection) ? [...state.selection] : [],
+            projectorOptions: {...(state.projectorOptions || {})}
+        };
+    }
+
+    update(view, state = {}) {
+        if (!view) return;
+
+        this._currentView = view;
+        this._currentState = this._cloneState(state);
+        this._cleanupPinned(view);
+
+        const layout = this._computeLayout(view);
+        this._currentLayout = layout;
+        this._nodeById = layout.nodeById;
+        this._edgeById = layout.edgeById;
+
+        const centerRequested = !!this._currentState?.projectorOptions?.centerGraph;
+        if (layout.bbox && (centerRequested || !this._didFit)) {
+            this._fitToBBox(layout.bbox);
+            this._didFit = true;
+        }
+
+        this._render(layout, this._currentState, view);
+    }
+
     _fitToBBox(b) {
         if (!b || !b.min || !b.max) return;
         const w = Math.max(1, b.max.x - b.min.x);
@@ -56,88 +140,66 @@ export default class DynamicRendererD3 {
         this.svg.call(this.zoom.transform, d3.zoomIdentity);
     }
 
-    update(view, state = {}) {
-        if (!view) return;
-        const layout = this._computeLayout(view);
-        this._nodeById = layout.nodeById;
-        this._edgeById = layout.edgeById;
-        this._placeOnEdge = layout.placeOnEdge;
-
-        const shouldCenter = state?.projectorOptions?.centerGraph;
-        if (layout.bbox && (shouldCenter || !this._didFit)) {
-            this._fitToBBox(layout.bbox);
-            this._didFit = true;
-        }
-
-        this._draw(view, state, layout);
-    }
-
     _computeLayout(view) {
-        const nodes = Array.isArray(view?.nodes) ? view.nodes : [];
-        const edges = Array.isArray(view?.edges) ? view.edges : [];
-
-        const nodeById = new Map();
-        for (const node of nodes) {
-            if (!node || node.id == null) continue;
-            nodeById.set(node.id, node);
-        }
+        const nodesInput = Array.isArray(view?.nodes) ? view.nodes : [];
+        const edgesInput = Array.isArray(view?.edges) ? view.edges : [];
 
         const adjacency = new Map();
-        const edgeById = new Map();
-        const edgeRecords = [];
+        const rawNodeById = new Map();
+        for (const node of nodesInput) {
+            if (!node || node.id == null) continue;
+            rawNodeById.set(node.id, node);
+            adjacency.set(node.id, []);
+        }
 
-        const ensureAdj = (id) => {
-            if (!adjacency.has(id)) adjacency.set(id, []);
-            return adjacency.get(id);
-        };
-        for (const edge of edges) {
+        const edgeRecords = [];
+        for (const edge of edgesInput) {
             if (!edge || edge.id == null) continue;
             const sourceId = resolveNodeId(edge.source);
             const targetId = resolveNodeId(edge.target);
-            if (!nodeById.has(sourceId) || !nodeById.has(targetId)) continue;
+            if (!rawNodeById.has(sourceId) || !rawNodeById.has(targetId)) continue;
             const rawLen = Number(edge.lengthM);
             const length = Number.isFinite(rawLen) && rawLen > 0 ? rawLen : DEFAULT_EDGE_LENGTH;
-
-            ensureAdj(sourceId).push({id: targetId, edgeId: edge.id, length});
-            ensureAdj(targetId).push({id: sourceId, edgeId: edge.id, length});
-
-            const record = {
+            adjacency.get(sourceId).push({nodeId: targetId, length});
+            adjacency.get(targetId).push({nodeId: sourceId, length});
+            edgeRecords.push({
                 id: edge.id,
                 label: edge.label ?? null,
                 sourceId,
                 targetId,
                 lengthM: length
-            };
-            edgeById.set(edge.id, record);
-            edgeRecords.push(record);
+            });
         }
 
-        nodeById.forEach((_, id) => { if (!adjacency.has(id)) adjacency.set(id, []); });
+        // Ensure isolated nodes have adjacency entries
+        rawNodeById.forEach((_, id) => {
+            if (!adjacency.has(id)) adjacency.set(id, []);
+        });
 
+        // Connected components
         const components = [];
+        const componentIndex = new Map();
         const visited = new Set();
-        for (const nodeId of nodeById.keys()) {
+        for (const nodeId of rawNodeById.keys()) {
             if (visited.has(nodeId)) continue;
             const queue = [nodeId];
-            const comp = new Set();
+            const comp = [];
             visited.add(nodeId);
             while (queue.length) {
                 const cur = queue.shift();
-                comp.add(cur);
+                comp.push(cur);
                 for (const nbr of adjacency.get(cur) || []) {
-                    if (!visited.has(nbr.id)) {
-                        visited.add(nbr.id);
-                        queue.push(nbr.id);
-                    }
+                    if (visited.has(nbr.nodeId)) continue;
+                    visited.add(nbr.nodeId);
+                    queue.push(nbr.nodeId);
                 }
             }
-            components.push(comp);
+            const idx = components.push(comp) - 1;
+            for (const id of comp) componentIndex.set(id, idx);
         }
 
-        const distMap = new Map();
-        const laneMap = new Map();
-        let laneFloor = 0;
-
+        const nodeById = new Map();
+        const nodes = [];
         const runDijkstra = (rootId, compNodes) => {
             const dist = new Map();
             const parent = new Map();
@@ -156,35 +218,37 @@ export default class DynamicRendererD3 {
                 settled.add(nodeId);
                 const currentDist = dist.get(nodeId) ?? 0;
                 for (const nbr of adjacency.get(nodeId) || []) {
-                    if (!compNodes.has(nbr.id)) continue;
+                    if (!compNodes.has(nbr.nodeId)) continue;
                     const weight = Number.isFinite(nbr.length) && nbr.length > 0 ? nbr.length : DEFAULT_EDGE_LENGTH;
                     const alt = currentDist + weight;
-                    const prev = dist.get(nbr.id);
+                    const prev = dist.get(nbr.nodeId);
                     if (!Number.isFinite(prev) || alt < prev - 1e-6) {
-                        dist.set(nbr.id, alt);
-                        parent.set(nbr.id, nodeId);
-                        queue.push(nbr.id);
+                        dist.set(nbr.nodeId, alt);
+                        parent.set(nbr.nodeId, nodeId);
+                        queue.push(nbr.nodeId);
                     }
                 }
             }
             return {dist, parent};
         };
-        for (const compNodes of components) {
-            if (!compNodes.size) continue;
-            let rootId = null;
-            for (const id of compNodes) {
-                const deg = (adjacency.get(id) || []).length;
-                if (deg <= 1) { rootId = id; break; }
-            }
-            if (!rootId) {
-                rootId = compNodes.values().next().value;
-            }
-            const {dist, parent} = runDijkstra(rootId, compNodes);
-            dist.set(rootId, dist.get(rootId) ?? 0);
 
-            for (const id of compNodes) {
-                distMap.set(id, dist.get(id) ?? 0);
+        const laneMap = new Map();
+        let laneFloor = 0;
+        for (const comp of components) {
+            if (!comp.length) continue;
+            const compSet = new Set(comp);
+            let rootId = null;
+            for (const id of comp) {
+                const degree = (adjacency.get(id) || []).length;
+                if (degree <= 1) {
+                    rootId = id;
+                    break;
+                }
             }
+            if (!rootId) rootId = comp[0];
+
+            const {dist, parent} = runDijkstra(rootId, compSet);
+            dist.set(rootId, dist.get(rootId) ?? 0);
 
             const children = new Map();
             for (const [childId, parentId] of parent.entries()) {
@@ -195,13 +259,8 @@ export default class DynamicRendererD3 {
             const assignLane = (nodeId, lane) => {
                 laneMap.set(nodeId, lane);
                 const kids = children.get(nodeId) || [];
-                if (!kids.length) {
-                    return {min: lane, max: lane};
-                }
-                if (kids.length === 1) {
-                    const res = assignLane(kids[0], lane);
-                    return {min: Math.min(lane, res.min), max: Math.max(lane, res.max)};
-                }
+                if (!kids.length) return {min: lane, max: lane};
+                if (kids.length === 1) return assignLane(kids[0], lane);
                 const sorted = [...kids].sort((a, b) => {
                     const da = dist.get(a) ?? 0;
                     const db = dist.get(b) ?? 0;
@@ -222,88 +281,106 @@ export default class DynamicRendererD3 {
 
             const {min, max} = assignLane(rootId, 0);
             const shift = laneFloor - min;
-            for (const id of compNodes) {
+            for (const id of comp) {
                 const lane = laneMap.get(id);
-                if (lane == null) {
-                    laneMap.set(id, laneFloor);
-                    continue;
-                }
                 laneMap.set(id, lane + shift);
             }
             laneFloor = (max + shift) + COMPONENT_LANE_GAP;
+
+            for (const id of comp) {
+                const original = rawNodeById.get(id);
+                const lane = laneMap.get(id) ?? 0;
+                const distVal = dist.get(id) ?? 0;
+                const nodeCopy = {...original};
+                nodeCopy.x = distVal;
+                nodeCopy.y = lane * LANE_SPACING;
+                nodeCopy.lane = lane;
+                nodes.push(nodeCopy);
+                nodeById.set(id, nodeCopy);
+            }
         }
 
-        const nodeArray = [];
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const [nodeId, node] of nodeById.entries()) {
-            const dist = distMap.get(nodeId) ?? 0;
-            const lane = laneMap.get(nodeId) ?? 0;
-            const x = dist;
-            const y = lane * LANE_SPACING;
-            node.x = x;
-            node.y = y;
-            node.lane = lane;
-            nodeArray.push(node);
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
+        const edgeById = new Map();
+        for (const edge of edgeRecords) {
+            edgeById.set(edge.id, edge);
         }
 
-        const edgeArray = [];
-        for (const record of edgeRecords) {
-            const src = nodeById.get(record.sourceId);
-            const tgt = nodeById.get(record.targetId);
-            if (!src || !tgt) continue;
-            record.x1 = src.x;
-            record.y1 = src.y;
-            record.x2 = tgt.x;
-            record.y2 = tgt.y;
-            edgeArray.push(record);
-        }
-
-        if (!Number.isFinite(minX)) {
-            minX = -100;
-            maxX = 100;
-            minY = -100;
-            maxY = 100;
-        }
-
-        const bbox = {
-            min: {x: minX - BBOX_MARGIN, y: minY - BBOX_MARGIN},
-            max: {x: maxX + BBOX_MARGIN, y: maxY + BBOX_MARGIN}
-        };
-        bbox.width = bbox.max.x - bbox.min.x;
-        bbox.height = bbox.max.y - bbox.min.y;
-
-        const placeOnEdge = (edgeId, distanceMeters) => {
-            const edge = edgeById.get(edgeId);
-            if (!edge) return {x: 0, y: 0};
-            const src = nodeById.get(edge.sourceId);
-            const tgt = nodeById.get(edge.targetId);
-            if (!src || !tgt) return {x: 0, y: 0};
-            const L = edge.lengthM > 0 ? edge.lengthM : DEFAULT_EDGE_LENGTH;
-            const distNum = Number(distanceMeters);
-            const distMeters = Number.isFinite(distNum) ? distNum : 0;
-            const frac = clamp01(distMeters / L);
-            return {
-                x: src.x + (tgt.x - src.x) * frac,
-                y: src.y + (tgt.y - src.y) * frac
-            };
-        };
-
-        return {
+        const layout = {
+            nodes,
+            edges: edgeRecords,
             nodeById,
             edgeById,
-            nodes: nodeArray,
-            edges: edgeArray,
-            bbox,
-            placeOnEdge
+            adjacency,
+            components,
+            componentIndex,
+            placeOnEdge: (edgeId, distanceMeters) => {
+                const record = edgeById.get(edgeId);
+                if (!record) return {x: 0, y: 0};
+                const src = nodeById.get(record.sourceId);
+                const tgt = nodeById.get(record.targetId);
+                if (!src || !tgt) return {x: 0, y: 0};
+                const L = record.lengthM > 0 ? record.lengthM : DEFAULT_EDGE_LENGTH;
+                const dist = Number(distanceMeters);
+                const frac = clamp01(Number.isFinite(dist) ? dist / L : 0);
+                return {
+                    x: src.x + (tgt.x - src.x) * frac,
+                    y: src.y + (tgt.y - src.y) * frac
+                };
+            }
         };
+
+        this._applyPinnedConstraints(layout);
+        layout.bbox = computeBBox(layout.nodes);
+        return layout;
     }
-    _draw(view, state, layout) {
-        const filters = state?.filters ?? {};
-        const selSet = new Set(state?.selection ?? []);
+
+    _applyPinnedConstraints(layout) {
+        if (!this._pinned.size) return;
+        const {nodeById, components, componentIndex} = layout;
+        const componentPinned = new Map();
+        for (const [nodeId, desired] of this._pinned.entries()) {
+            const compIdx = componentIndex.get(nodeId);
+            if (compIdx == null) continue;
+            const node = nodeById.get(nodeId);
+            if (!node) continue;
+            if (!componentPinned.has(compIdx)) componentPinned.set(compIdx, []);
+            componentPinned.get(compIdx).push({node, desired});
+        }
+        for (const [compIdx, pinnedEntries] of componentPinned.entries()) {
+            if (!pinnedEntries.length) continue;
+            let dx = 0;
+            let dy = 0;
+            if (pinnedEntries.length === 1) {
+                const {node, desired} = pinnedEntries[0];
+                dx = desired.x - node.x;
+                dy = desired.y - node.y;
+            } else {
+                let sumX = 0;
+                let sumY = 0;
+                for (const {node, desired} of pinnedEntries) {
+                    sumX += (desired.x - node.x);
+                    sumY += (desired.y - node.y);
+                }
+                dx = sumX / pinnedEntries.length;
+                dy = sumY / pinnedEntries.length;
+            }
+            const compNodes = components[compIdx] || [];
+            for (const id of compNodes) {
+                const node = nodeById.get(id);
+                if (!node) continue;
+                node.x += dx;
+                node.y += dy;
+            }
+            for (const {node, desired} of pinnedEntries) {
+                node.x = desired.x;
+                node.y = desired.y;
+            }
+        }
+    }
+
+    _render(layout, state, view) {
+        const filters = state?.filters || {};
+        const selSet = new Set(state?.selection || []);
         const hideSelected = !!filters.hideSelectedElements;
         const showEdges = filters.showEdges !== false;
         const showNodes = filters.showNodes !== false;
@@ -326,15 +403,16 @@ export default class DynamicRendererD3 {
 
         const nodesData = layout.nodes;
         const edgesData = layout.edges;
-        const place = (edgeId, dist) => layout.placeOnEdge(edgeId, dist);
+        const place = layout.placeOnEdge;
+        const adjacency = layout.adjacency;
 
         const spanFor = (edgeId, startDist, endDist) => {
-            const edge = layout.edgeById.get(edgeId);
-            if (!edge) return null;
-            const src = layout.nodeById.get(edge.sourceId);
-            const tgt = layout.nodeById.get(edge.targetId);
+            const record = layout.edgeById.get(edgeId);
+            if (!record) return null;
+            const src = layout.nodeById.get(record.sourceId);
+            const tgt = layout.nodeById.get(record.targetId);
             if (!src || !tgt) return null;
-            const L = edge.lengthM > 0 ? edge.lengthM : DEFAULT_EDGE_LENGTH;
+            const L = record.lengthM > 0 ? record.lengthM : DEFAULT_EDGE_LENGTH;
             const startNum = Number(startDist);
             const endNum = Number(endDist);
             let s = Number.isFinite(startNum) ? startNum : 0;
@@ -359,10 +437,10 @@ export default class DynamicRendererD3 {
         const linkEnter = linkSel.enter().append('line').attr('class', 'link');
         const linkMerged = linkEnter.merge(linkSel);
         linkMerged
-            .attr('x1', (d) => d.x1)
-            .attr('y1', (d) => d.y1)
-            .attr('x2', (d) => d.x2)
-            .attr('y2', (d) => d.y2)
+            .attr('x1', (d) => layout.nodeById.get(d.sourceId)?.x ?? 0)
+            .attr('y1', (d) => layout.nodeById.get(d.sourceId)?.y ?? 0)
+            .attr('x2', (d) => layout.nodeById.get(d.targetId)?.x ?? 0)
+            .attr('y2', (d) => layout.nodeById.get(d.targetId)?.y ?? 0)
             .classed('is-selected', (d) => selSet.has(d.id))
             .on('click', (ev, d) => this.onSelect([d.id]))
             .style('display', (d) => (showEdges && !(hideSelected && selSet.has(d.id))) ? null : 'none');
@@ -370,19 +448,22 @@ export default class DynamicRendererD3 {
         const nodeSel = this.gNodes.selectAll('g.node').data(nodesData, (d) => d.id);
         nodeSel.exit().remove();
         const nodeEnter = nodeSel.enter().append('g').attr('class', 'node');
-        nodeEnter.each(function() { appendIconG(d3.select(this), 'node'); });
+        nodeEnter.each(function () { appendIconG(d3.select(this), 'node'); });
         nodeEnter.append('title');
         const nodeMerged = nodeEnter.merge(nodeSel);
         nodeMerged
             .attr('transform', (d) => `translate(${d.x},${d.y}) scale(${NODE_ICON_SCALE})`)
             .classed('is-selected', (d) => selSet.has(d.id))
+            .classed('is-pinned', (d) => this._pinned.has(d.id))
             .style('display', (d) => (showNodes && !(hideSelected && selSet.has(d.id))) ? null : 'none')
-            .on('click', (ev, d) => this.onSelect([d.id]));
+            .on('click', (ev, d) => this.onSelect([d.id]))
+            .on('dblclick', (ev, d) => this._onNodeDblClick(ev, d));
         nodeMerged.select('title').text((d) => d.label || d.id);
-        nodeMerged.each(function(d) {
+        nodeMerged.each(function (d) {
             const selected = selSet.has(d.id);
             d3.select(this).selectAll('circle,rect,path').classed('is-selected', selected);
         });
+        nodeMerged.call(this._dragBehavior);
 
         const nodeLabels = this.gLabels.selectAll('text.node-label').data(nodesData, (d) => d.id);
         nodeLabels.exit().remove();
@@ -394,12 +475,12 @@ export default class DynamicRendererD3 {
             .style('display', (d) => (showAnyLabel && showNodes && !(hideSelected && selSet.has(d.id))) ? null : 'none');
 
         const edgeLabelData = (showAnyLabel && showEdges)
-            ? edgesData.map((edge) => ({
-                id: edge.id,
-                label: edge.label ?? null,
-                x: (edge.x1 + edge.x2) / 2,
-                y: (edge.y1 + edge.y2) / 2
-            }))
+            ? edgesData.map((edge) => {
+                const s = layout.nodeById.get(edge.sourceId);
+                const t = layout.nodeById.get(edge.targetId);
+                if (!s || !t) return null;
+                return {id: edge.id, label: edge.label ?? null, x: (s.x + t.x) / 2, y: (s.y + t.y) / 2};
+            }).filter(Boolean)
             : [];
         const edgeLabels = this.gLabels.selectAll('text.edge-label').data(edgeLabelData, (d) => d.id);
         edgeLabels.exit().remove();
@@ -409,6 +490,7 @@ export default class DynamicRendererD3 {
             .attr('y', (d) => d.y)
             .text((d) => composeLabel(d))
             .style('display', (d) => (showAnyLabel && showEdges && !(hideSelected && selSet.has(d.id))) ? null : 'none');
+
         const projectElementList = (arr) => {
             if (!Array.isArray(arr)) return [];
             return arr.map((el) => {
@@ -468,17 +550,18 @@ export default class DynamicRendererD3 {
             .attr('y2', (d) => d.span.y2)
             .attr('stroke-linecap', 'round')
             .style('display', showEdges ? null : 'none');
+
         const balSel = this.gElems.selectAll('g.balise').data(baliseData, (d) => d.id || `${d.edgeId}:${d.distanceFromA}`);
         balSel.exit().remove();
         const balEnter = balSel.enter().append('g').attr('class', 'balise');
-        balEnter.each(function() { appendIconG(d3.select(this), 'balise'); });
+        balEnter.each(function () { appendIconG(d3.select(this), 'balise'); });
         const balMerged = balEnter.merge(balSel);
         balMerged
             .attr('transform', (d) => `translate(${d.x},${d.y}) scale(1)`)
             .classed('is-selected', (d) => !!d.id && selSet.has(d.id))
             .style('display', (d) => (showBal && !(hideSelected && d.id && selSet.has(d.id))) ? null : 'none')
             .on('click', (ev, d) => this.onSelect([d.id || d.edgeId]));
-        balMerged.each(function(d) {
+        balMerged.each(function (d) {
             const selected = !!d.id && selSet.has(d.id);
             d3.select(this).selectAll('circle,rect,path').classed('is-selected', selected);
         });
@@ -486,14 +569,14 @@ export default class DynamicRendererD3 {
         const sigSel = this.gElems.selectAll('g.signal').data(signalData, (d) => d.id || `${d.edgeId}:${d.distanceFromA}`);
         sigSel.exit().remove();
         const sigEnter = sigSel.enter().append('g').attr('class', 'signal');
-        sigEnter.each(function() { appendIconG(d3.select(this), 'signal'); });
+        sigEnter.each(function () { appendIconG(d3.select(this), 'signal'); });
         const sigMerged = sigEnter.merge(sigSel);
         sigMerged
             .attr('transform', (d) => `translate(${d.x},${d.y}) scale(${SIGNAL_ICON_SCALE})`)
             .classed('is-selected', (d) => !!d.id && selSet.has(d.id))
             .style('display', (d) => (showSig && !(hideSelected && d.id && selSet.has(d.id))) ? null : 'none')
             .on('click', (ev, d) => this.onSelect([d.id || d.edgeId]));
-        sigMerged.each(function(d) {
+        sigMerged.each(function (d) {
             const selected = !!d.id && selSet.has(d.id);
             d3.select(this).selectAll('circle,rect,path').classed('is-selected', selected);
         });
@@ -501,16 +584,89 @@ export default class DynamicRendererD3 {
         const tdcSel = this.gElems.selectAll('g.tdscomp').data(tdsData, (d) => d.id || `${d.edgeId}:${d.distanceFromA}`);
         tdcSel.exit().remove();
         const tdcEnter = tdcSel.enter().append('g').attr('class', 'tdscomp');
-        tdcEnter.each(function() { appendIconG(d3.select(this), 'tds'); });
+        tdcEnter.each(function () { appendIconG(d3.select(this), 'tds'); });
         const tdcMerged = tdcEnter.merge(tdcSel);
         tdcMerged
             .attr('transform', (d) => `translate(${d.x},${d.y}) scale(${TDS_ICON_SCALE})`)
             .classed('is-selected', (d) => !!d.id && selSet.has(d.id))
             .style('display', (d) => (showTds && !(hideSelected && d.id && selSet.has(d.id))) ? null : 'none')
             .on('click', (ev, d) => this.onSelect([d.id || d.edgeId]));
-        tdcMerged.each(function(d) {
+        tdcMerged.each(function (d) {
             const selected = !!d.id && selSet.has(d.id);
             d3.select(this).selectAll('circle,rect,path').classed('is-selected', selected);
         });
     }
+
+    _propagateDrag(anchorId, dx, dy) {
+        if (!this._currentLayout || (!dx && !dy)) return;
+        const {adjacency, nodeById} = this._currentLayout;
+        const visited = new Set([anchorId]);
+        const queue = [{id: anchorId, depth: 0}];
+        while (queue.length) {
+            const {id, depth} = queue.shift();
+            if (depth >= MAX_PROPAGATION_DEPTH) continue;
+            const nextDepth = depth + 1;
+            const factor = Math.pow(DRAG_PROPAGATION_FALLOFF, nextDepth);
+            for (const nbr of adjacency.get(id) || []) {
+                const nodeId = nbr.nodeId;
+                if (visited.has(nodeId)) continue;
+                visited.add(nodeId);
+                const node = nodeById.get(nodeId);
+                if (node && !this._pinned.has(nodeId)) {
+                    node.x += dx * factor;
+                    node.y += dy * factor;
+                }
+                queue.push({id: nodeId, depth: nextDepth});
+            }
+        }
+    }
+
+    _onDragStart(event, d) {
+        event.sourceEvent?.stopPropagation?.();
+        this._dragPrev = {x: d.x, y: d.y};
+        this._pinned.set(d.id, {x: d.x, y: d.y});
+    }
+
+    _onDrag(event, d) {
+        event.sourceEvent?.stopPropagation?.();
+        if (!this._currentLayout) return;
+        const node = this._currentLayout.nodeById.get(d.id);
+        if (!node) return;
+        const prev = this._dragPrev || {x: node.x, y: node.y};
+        const nx = event.x;
+        const ny = event.y;
+        const dx = nx - prev.x;
+        const dy = ny - prev.y;
+        node.x = nx;
+        node.y = ny;
+        this._pinned.set(d.id, {x: nx, y: ny});
+        this._dragPrev = {x: nx, y: ny};
+        this._propagateDrag(d.id, dx, dy);
+        this._currentLayout.bbox = computeBBox(this._currentLayout.nodes);
+        this._render(this._currentLayout, this._currentState, this._currentView);
+    }
+
+    _onDragEnd(event, d) {
+        event.sourceEvent?.stopPropagation?.();
+        this._dragPrev = null;
+        this._settleLayout();
+    }
+
+    _onNodeDblClick(event, d) {
+        event.stopPropagation();
+        if (this._pinned.has(d.id)) {
+            this._pinned.delete(d.id);
+        } else {
+            this._pinned.set(d.id, {x: d.x, y: d.y});
+        }
+        this._settleLayout();
+    }
+
+    _settleLayout() {
+        if (!this._currentView) return;
+        const nextState = this._cloneState(this._currentState);
+        this.update(this._currentView, nextState);
+    }
 }
+
+
