@@ -182,36 +182,69 @@ export default class GraphController {
             const elems = view?.elements || {};
             const edgesGeo = view?.geo_edges || [];
             const topEdges = view?.top_edges || [];
+            const nodes = Array.isArray(view?.nodes) ? view.nodes : [];
 
-            const byIdElem = (id) => (elems.balises || []).find(d => d.id === id)
-                || (elems.signals || []).find(d => d.id === id)
-                || (elems.tds_components || []).find(d => d.id === id) || null;
+            const norm = (s) => {
+                if (s == null) return '';
+                return String(s);
+            };
+            const lc = (s) => norm(s).toLowerCase();
+            const eq = (a, b) => {
+                if (a == null || b == null) return false;
+                return lc(a) === lc(b);
+            };
+            const contains = (a, b) => {
+                if (a == null || b == null) return false;
+                return lc(a).includes(lc(b));
+            };
 
-            const byNameElem = (pred) => (elems.balises || []).find(d => pred(d.name))
-                || (elems.signals || []).find(d => pred(d.name))
-                || (elems.tds_components || []).find(d => pred(d.name)) || null;
+            const byIdElem = (id) => {
+                const match = (arr) => (arr || []).find(d => d?.id != null && eq(d.id, id));
+                return match(elems.balises) || match(elems.signals) || match(elems.tds_components) || null;
+            };
 
-            const byIdEdge = (id) => this.store.getEdge(id) ? id : null;
+            const byNameElem = (pred) => {
+                const match = (arr) => (arr || []).find(d => {
+                    const name = norm(d?.name ?? d?.label ?? d?.id ?? '');
+                    return name && pred(name);
+                });
+                return match(elems.balises) || match(elems.signals) || match(elems.tds_components) || null;
+            };
+
+            const byIdNode = (id) => {
+                if (!id) return null;
+                return nodes.find(n => n?.id != null && eq(n.id, id)) || null;
+            };
+
+            const byNameNode = (pred) => {
+                if (typeof pred !== 'function') return null;
+                return nodes.find(n => {
+                    const name = norm(n?.name ?? n?.label ?? n?.id ?? '');
+                    return name && pred(name);
+                }) || null;
+            };
+
+            const byIdEdge = (id) => {
+                if (!id) return null;
+                if (this.store.getEdge(id)) return id;
+                const candidate = this.store.getAllEdges().find(e => e?.id != null && eq(e.id, id));
+                return candidate ? candidate.id : null;
+            };
+
             const byNameEdge = (pred) => {
-                const t = topEdges.find(e => pred(e.label || e.name || ''));
+                if (typeof pred !== 'function') return null;
+                const t = topEdges.find(e => {
+                    const label = norm(e?.label ?? e?.name ?? '');
+                    return label && pred(label);
+                });
                 return t ? (t.id || null) : null;
             };
 
-            const norm = (s) => (s ?? '').toString();
-            const lc = (s) => norm(s).toLowerCase();
-            const eq = (a, b) => lc(a) === lc(b);
-            const contains = (a, b) => lc(a).includes(lc(b));
-
-            // 1) ID exakte Suche: Edge zuerst, dann Elemente
-            let kind = null;
-            let selId = null;
-            let zoomTo = null;
-
-            let edgeId = byIdEdge(q);
-            if (edgeId) {
+            const assignEdge = (edgeId) => {
+                if (!edgeId) return false;
                 kind = 'edge';
                 selId = edgeId;
-                // XY am Mittelpunkt der Polyline berechnen
+                zoomTo = null;
                 const ge = edgesGeo.find(e => (e.edgeId || e.id) === edgeId);
                 let p = null;
                 const pts = ge?.polyline || [];
@@ -220,79 +253,71 @@ export default class GraphController {
                     p = pts[mid];
                 }
                 if (!p) {
-                    // Fallback: Endpunkte der Edge aus Store
                     const ends = this.store.getEdgeEndpoints(edgeId);
                     if (ends?.A && ends?.B) p = {x: (ends.A.x + ends.B.x) / 2, y: (ends.A.y + ends.B.y) / 2};
                 }
                 if (p) zoomTo = {x: p.x, y: p.y};
-            } else {
-                // 2) Element-ID
-                const el = byIdElem(q);
-                if (el) {
-                    kind = 'element';
-                    selId = el.id || el.edgeId; // Fallback falls id fehlt
-                    zoomTo = (Number.isFinite(el.x) && Number.isFinite(el.y)) ? {x: el.x, y: el.y} : null;
+                return true;
+            };
+
+            const assignNode = (node) => {
+                if (!node) return false;
+                kind = 'node';
+                selId = node.id;
+                zoomTo = null;
+                if (Number.isFinite(node?.x) && Number.isFinite(node?.y)) {
+                    zoomTo = {x: node.x, y: node.y};
+                }
+                return true;
+            };
+
+            const assignElement = (el) => {
+                if (!el) return false;
+                kind = 'element';
+                selId = el.id || el.edgeId;
+                zoomTo = null;
+                if (Number.isFinite(el.x) && Number.isFinite(el.y)) {
+                    zoomTo = {x: el.x, y: el.y};
+                }
+                return true;
+            };
+
+            // 1) ID exakte Suche: Edge zuerst, dann Nodes, dann Elemente
+            let kind = null;
+            let selId = null;
+            let zoomTo = null;
+
+            if (!assignEdge(byIdEdge(q))) {
+                if (!assignNode(byIdNode(q))) {
+                    assignElement(byIdElem(q));
                 }
             }
 
-            // 3) Name exakte Übereinstimmung (falls nichts gefunden)
+            // 2) Name exakte Übereinstimmung (falls nichts gefunden)
             if (!selId) {
-                // Edge-Name exakt
-                edgeId = byNameEdge(v => eq(v, q));
-                if (edgeId) {
-                    kind = 'edge';
-                    selId = edgeId;
-                    const ge = edgesGeo.find(e => (e.edgeId || e.id) === edgeId);
-                    const pts = ge?.polyline || [];
-                    if (pts.length) {
-                        const mid = Math.max(0, Math.floor((pts.length - 1) / 2));
-                        const p = pts[mid];
-                        zoomTo = {x: p.x, y: p.y};
-                    }
-                } else {
-                    // Element-Name exakt
-                    const el = byNameElem(v => eq(v, q));
-                    if (el) {
-                        kind = 'element';
-                        selId = el.id || el.edgeId;
-                        if (Number.isFinite(el.x) && Number.isFinite(el.y)) zoomTo = {x: el.x, y: el.y};
+                if (!assignEdge(byNameEdge(v => eq(v, q)))) {
+                    if (!assignNode(byNameNode(v => eq(v, q)))) {
+                        assignElement(byNameElem(v => eq(v, q)));
                     }
                 }
             }
 
-            // 4) Name enthält (fallback)
+            // 3) Name enthält (Fallback)
             if (!selId) {
-                edgeId = byNameEdge(v => contains(v, q));
-                if (edgeId) {
-                    kind = 'edge';
-                    selId = edgeId;
-                    const ge = edgesGeo.find(e => (e.edgeId || e.id) === edgeId);
-                    const pts = ge?.polyline || [];
-                    if (pts.length) {
-                        const mid = Math.max(0, Math.floor((pts.length - 1) / 2));
-                        const p = pts[mid];
-                        zoomTo = {x: p.x, y: p.y};
-                    }
-                } else {
-                    const el = byNameElem(v => contains(v, q));
-                    if (el) {
-                        kind = 'element';
-                        selId = el.id || el.edgeId;
-                        if (Number.isFinite(el.x) && Number.isFinite(el.y)) zoomTo = {x: el.x, y: el.y};
+                if (!assignEdge(byNameEdge(v => contains(v, q)))) {
+                    if (!assignNode(byNameNode(v => contains(v, q)))) {
+                        assignElement(byNameElem(v => contains(v, q)));
                     }
                 }
             }
 
             if (!selId) return {ok: false, reason: 'No matches found. Check ID/Name!'};
 
-            // Selection aktualisieren
             this.addToSelection([selId]);
 
-            // One-shot zoomTo setzen (XY für Located; Renderer wertet das aus)
             if (zoomTo) {
                 this.setProjectorOptions({ zoomTo, zoomToTarget: { kind, id: selId } });
             } else {
-                // Falls keine XY vorhanden, trotzdem Ziel-ID setzen (für Dynamic-Ansicht)
                 this.setProjectorOptions({ zoomToTarget: { kind, id: selId } });
             }
 
